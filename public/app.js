@@ -72,6 +72,7 @@ const mockEmployees = {
 // Current logged in employee
 let currentEmployee = null;
 let currentLanguage = 'ar';
+let currentLeaveRecords = [];
 
 // Auto-logout timer variables
 let logoutTimer = null;
@@ -99,8 +100,19 @@ const translations = {
         labelPosition: 'المسمى الوظيفي',
         labelOrgUnit: 'الإدارة / الوحدة',
         labelApprover: 'المدير المباشر',
+        leaveHistoryTitle: 'سجل الإجازات',
+        leaveLoading: 'جاري تحميل سجل الإجازات...',
+        leaveNoData: 'لا توجد بيانات إجازات لهذا الموظف.',
+        leaveLoadFailed: 'تعذر تحميل سجل الإجازات.',
+        leaveHdrType: 'نوع الإجازة',
+        leaveHdrTotal: 'الإجمالي',
+        leaveHdrUsed: 'المستخدم',
+        leaveHdrRemaining: 'المتبقي',
+        leaveHdrFrom: 'من',
+        leaveHdrTo: 'إلى',
         sectionTitle: 'الخدمات المتاحة',
         unavailable: 'غير متوفر',
+        noPhotoInSap: 'لا توجد صورة في SAP',
         employeeNotFound: 'الرقم الوظيفي غير موجود.',
         successTitle: 'تم إرسال الطلب بنجاح',
         successMessageStart: 'تم تقديم طلب "',
@@ -140,8 +152,19 @@ const translations = {
         labelPosition: 'Position',
         labelOrgUnit: 'Org unit / department',
         labelApprover: 'Direct approver',
+        leaveHistoryTitle: 'Leave history',
+        leaveLoading: 'Loading leave history...',
+        leaveNoData: 'No leave data found for this employee.',
+        leaveLoadFailed: 'Unable to load leave history.',
+        leaveHdrType: 'Leave type',
+        leaveHdrTotal: 'Total',
+        leaveHdrUsed: 'Used',
+        leaveHdrRemaining: 'Remaining',
+        leaveHdrFrom: 'From',
+        leaveHdrTo: 'To',
         sectionTitle: 'Available services',
         unavailable: 'Not available',
+        noPhotoInSap: 'No photo in SAP',
         employeeNotFound: 'Employee ID was not found.',
         successTitle: 'Request submitted successfully',
         successMessageStart: 'Your request "',
@@ -338,6 +361,7 @@ function applyTranslations() {
     document.getElementById('label-position').textContent = dictionary.labelPosition;
     document.getElementById('label-org-unit').textContent = dictionary.labelOrgUnit;
     document.getElementById('label-approver').textContent = dictionary.labelApprover;
+    document.getElementById('leave-history-title').textContent = dictionary.leaveHistoryTitle;
     document.getElementById('section-title').textContent = dictionary.sectionTitle;
 
     Object.keys(dictionary.actions).forEach((actionKey) => {
@@ -350,8 +374,10 @@ function applyTranslations() {
     document.getElementById('lang-ar').classList.toggle('active', currentLanguage === 'ar');
     document.getElementById('lang-en').classList.toggle('active', currentLanguage === 'en');
 
+    renderLeaveHistory(currentLeaveRecords);
+
     if (currentEmployee) {
-        displayEmployee(currentEmployee);
+        displayEmployee(currentEmployee, false);
     }
 }
 
@@ -429,7 +455,76 @@ async function fetchEmployeeFromDevice() {
 // ============================================
 // DISPLAY EMPLOYEE
 // ============================================
-function displayEmployee(employee) {
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function renderLeaveHistory(records) {
+    const content = document.getElementById('leave-history-content');
+    if (!content) return;
+
+    if (!Array.isArray(records) || records.length === 0) {
+        content.innerHTML = `<div class="leave-history-message">${t('leaveNoData')}</div>`;
+        return;
+    }
+
+    const rows = records.map((record) => {
+        return `
+            <tr>
+                <td>${escapeHtml(record.leaveType || '-')}</td>
+                <td>${escapeHtml(record.totalDays ?? 0)}</td>
+                <td>${escapeHtml(record.usedDays ?? 0)}</td>
+                <td>${escapeHtml(record.remainingDays ?? 0)}</td>
+                <td>${escapeHtml(record.fromDate || '-')}</td>
+                <td>${escapeHtml(record.toDate || '-')}</td>
+            </tr>
+        `;
+    }).join('');
+
+    content.innerHTML = `
+        <table class="leave-history-table">
+            <thead>
+                <tr>
+                    <th>${t('leaveHdrType')}</th>
+                    <th>${t('leaveHdrTotal')}</th>
+                    <th>${t('leaveHdrUsed')}</th>
+                    <th>${t('leaveHdrRemaining')}</th>
+                    <th>${t('leaveHdrFrom')}</th>
+                    <th>${t('leaveHdrTo')}</th>
+                </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+        </table>
+    `;
+}
+
+async function loadLeaveHistory(employeeId) {
+    const content = document.getElementById('leave-history-content');
+    if (!content) return;
+
+    content.innerHTML = `<div class="leave-history-message">${t('leaveLoading')}</div>`;
+
+    try {
+        const response = await fetch(`/api/leave-overview/${encodeURIComponent(employeeId)}`);
+        if (!response.ok) {
+            throw new Error(`Leave API returned ${response.status}`);
+        }
+
+        const payload = await response.json();
+        currentLeaveRecords = Array.isArray(payload.records) ? payload.records : [];
+        renderLeaveHistory(currentLeaveRecords);
+    } catch (error) {
+        currentLeaveRecords = [];
+        content.innerHTML = `<div class="leave-history-message">${t('leaveLoadFailed')}</div>`;
+    }
+}
+
+function displayEmployee(employee, shouldLoadLeaveHistory = true) {
     const safeName = employee.name || t('unavailable');
     const safeId = employee.hrCode || '-';
     const safeTitle = employee.title || t('unavailable');
@@ -444,6 +539,7 @@ function displayEmployee(employee) {
     document.getElementById('emp-title').textContent = safeTitle;
     document.getElementById('emp-location').textContent = safeLocation;
     document.getElementById('emp-approver').textContent = safeApprover;
+    document.getElementById('photo-status').textContent = employee.hasPhoto === false ? t('noPhotoInSap') : '';
 
     // Switch screens
     document.getElementById('waiting-screen').classList.add('hidden');
@@ -451,6 +547,16 @@ function displayEmployee(employee) {
 
     // Start auto-logout timer
     startLogoutTimer();
+
+    if (shouldLoadLeaveHistory) {
+        const leaveLookupId = String(employee.hrCode || '').trim();
+        if (leaveLookupId) {
+            loadLeaveHistory(leaveLookupId);
+        } else {
+            currentLeaveRecords = [];
+            renderLeaveHistory(currentLeaveRecords);
+        }
+    }
 }
 
 // ============================================
@@ -536,6 +642,8 @@ function goBack() {
     document.getElementById('waiting-screen').classList.remove('hidden');
     document.getElementById('data-screen').classList.add('hidden');
     document.getElementById('emp-id-input').value = '';
+    currentLeaveRecords = [];
+    renderLeaveHistory(currentLeaveRecords);
     currentEmployee = null;
 }
 

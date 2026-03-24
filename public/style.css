@@ -329,6 +329,13 @@ body {
     object-fit: cover;
     border: 3px solid var(--surface);
 }
+.photo-status {
+    min-width: 84px;
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 700;
+}
 .profile-info h2 { font-size: 1.5rem; font-weight: 800; margin-bottom: 10px; color: var(--text); }
 .profile-info {
     flex: 1;
@@ -361,6 +368,49 @@ body {
     font-size: 12px;
     color: var(--text-muted);
     font-weight: 700;
+}
+
+.leave-history-card {
+    background: var(--surface);
+    border: 1.5px solid var(--border2);
+    border-radius: 16px;
+    padding: 16px;
+    box-shadow: var(--shadow);
+    margin-bottom: 24px;
+}
+
+.leave-history-content {
+    overflow-x: auto;
+}
+
+.leave-history-message {
+    font-size: 13px;
+    color: var(--text-muted);
+    padding: 8px 4px;
+}
+
+.leave-history-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.leave-history-table th,
+.leave-history-table td {
+    border-bottom: 1px solid var(--border);
+    padding: 10px 8px;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.leave-history-table th {
+    color: var(--text-muted);
+    font-weight: 800;
+    background: var(--surface2);
+}
+
+.leave-history-table td {
+    color: var(--text);
 }
 
 /* Section title */
@@ -582,6 +632,11 @@ html[dir="ltr"] .search-box input,
 html[dir="ltr"] .form-input,
 html[dir="ltr"] .form-select,
 html[dir="ltr"] .form-textarea {
+    text-align: left;
+}
+
+html[dir="ltr"] .leave-history-table th,
+html[dir="ltr"] .leave-history-table td {
     text-align: left;
 }
 

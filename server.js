@@ -14,12 +14,17 @@ const SAP_EMPLOYEE_ENTITY = process.env.SAP_EMPLOYEE_ENTITY || 'EmployeeSet';
 const SAP_EMPLOYEE_ID_FIELD = process.env.SAP_EMPLOYEE_ID_FIELD || 'EmployeeID';
 const SAP_EMPLOYEE_LOOKUP_MODE = (process.env.SAP_EMPLOYEE_LOOKUP_MODE || 'filter').toLowerCase();
 const SAP_CLIENT = process.env.SAP_CLIENT || '200';
+const SAP_PHOTO_SERVICE_URL = (process.env.SAP_PHOTO_SERVICE_URL || '').replace(/\/?\?.*$/, '').replace(/\/$/, '');
+const SAP_PHOTO_ENTITY = process.env.SAP_PHOTO_ENTITY || 'EmployeeProfileSet';
+const SAP_LEAVE_ENTITY = process.env.SAP_LEAVE_ENTITY || 'LeaveOverview';
+const SAP_LEAVE_EMPLOYEE_FIELD = process.env.SAP_LEAVE_EMPLOYEE_FIELD || 'EmployeeId';
 
 const ZK_DEVICE_ENABLED = String(process.env.ZK_DEVICE_ENABLED || 'false').toLowerCase() === 'true';
 const ZK_DEVICE_IP = process.env.ZK_DEVICE_IP || '';
 const ZK_DEVICE_PORT = Number(process.env.ZK_DEVICE_PORT || 4370);
 const ZK_DEVICE_TIMEOUT = Number(process.env.ZK_DEVICE_TIMEOUT || 10000);
 const ZK_DEVICE_INPORT = Number(process.env.ZK_DEVICE_INPORT || 5200);
+const ZK_ATTENDANCE_USER_FIELD = (process.env.ZK_ATTENDANCE_USER_FIELD || '').trim();
 
 let ZKLib = null;
 try {
@@ -124,24 +129,29 @@ function pickFirst(obj, keys, fallback = '') {
     return fallback;
 }
 
-function normalizeSapEmployee(sapEmployee, requestedId) {
+function isLikelyPlaceholderBase64(value) {
+    if (typeof value !== 'string') return false;
+    const compact = value.replace(/\s/g, '').replace(/=+$/, '');
+    if (compact.length < 100) return false;
+    return /^A+$/.test(compact);
+}
+
+function normalizeSapEmployee(sapEmployee, requestedId, photoOverride = '') {
     const employeeName = pickFirst(sapEmployee, ['EmployeeName', 'FullName', 'Name', 'ENAME'], 'Employee');
     const employeeId = String(pickFirst(sapEmployee, ['EmployeeId', 'EmployeeID', 'HRCode', 'PERNR', 'EmpCode'], requestedId));
     const lineValue = pickFirst(sapEmployee, ['Line'], '');
-    const hasImageData = typeof lineValue === 'string' && lineValue.length > 100;
+    const hasImageData = typeof lineValue === 'string' && lineValue.length > 100 && !isLikelyPlaceholderBase64(lineValue);
+    const photoUrlFromSap = pickFirst(sapEmployee, ['PhotoUrl', 'AvatarUrl'], '');
+    const finalPhoto = photoOverride || photoUrlFromSap || (hasImageData ? `data:image/jpeg;base64,${lineValue}` : `https://ui-avatars.com/api/?name=${encodeURIComponent(employeeName)}&background=1d4ed8&color=fff&size=200`);
+    const hasPhoto = Boolean(photoOverride || photoUrlFromSap || hasImageData);
 
     return {
         name: employeeName,
         hrCode: employeeId,
         title: pickFirst(sapEmployee, ['Position', 'JobTitle', 'Designation'], 'Employee'),
         location: pickFirst(sapEmployee, ['OrgUnit', 'Location', 'Plant', 'Site', 'Department'], 'N/A'),
-        photo: pickFirst(
-            sapEmployee,
-            ['PhotoUrl', 'AvatarUrl'],
-            hasImageData
-                ? `data:image/jpeg;base64,${lineValue}`
-                : `https://ui-avatars.com/api/?name=${encodeURIComponent(employeeName)}&background=1d4ed8&color=fff&size=200`
-        ),
+        photo: finalPhoto,
+        hasPhoto,
         approver: pickFirst(sapEmployee, ['Approver'], ''),
         receivedItems: []
     };
@@ -161,11 +171,75 @@ function extractODataResults(payload) {
     return [];
 }
 
+function normalizeLeaveOverviewItem(item) {
+    return {
+        employeeId: String(pickFirst(item, ['EmployeeId', 'EmployeeID', 'PERNR'], '')),
+        leaveType: pickFirst(item, ['LeaveType', 'AbsenceType', 'Type'], ''),
+        totalDays: Number(pickFirst(item, ['TotalDays', 'Quota', 'AnnualLeave'], 0)) || 0,
+        usedDays: Number(pickFirst(item, ['UsedDays', 'Consumed', 'TakenDays'], 0)) || 0,
+        remainingDays: Number(pickFirst(item, ['RemainingDays', 'Balance', 'RemainingLeave'], 0)) || 0,
+        fromDate: pickFirst(item, ['FromDate', 'StartDate'], ''),
+        toDate: pickFirst(item, ['ToDate', 'EndDate'], ''),
+        raw: item
+    };
+}
+
 function createHttpError(status, payload) {
     const error = new Error(payload?.error || payload?.message || 'Request failed');
     error.status = status;
     error.payload = payload;
     return error;
+}
+
+function getSapAuth() {
+    return process.env.SAP_USERNAME && process.env.SAP_PASSWORD
+        ? { username: process.env.SAP_USERNAME, password: process.env.SAP_PASSWORD }
+        : undefined;
+}
+
+function getSapHeaders() {
+    return {
+        Accept: 'application/json',
+        'sap-client': SAP_CLIENT
+    };
+}
+
+async function resolvePhotoFromDedicatedApi(employeeId) {
+    if (!SAP_PHOTO_SERVICE_URL) {
+        return '';
+    }
+
+    const normalizedEmployeeId = normalizeEmployeeInput(employeeId);
+    const idCandidates = [...new Set([String(employeeId || '').trim(), normalizedEmployeeId])].filter(Boolean);
+
+    for (const idCandidate of idCandidates) {
+        try {
+            const response = await axios.get(`${SAP_PHOTO_SERVICE_URL}/${SAP_PHOTO_ENTITY}('${idCandidate}')`, {
+                params: {
+                    '$format': 'json',
+                    'FORMAT': 'JSON'
+                },
+                auth: getSapAuth(),
+                headers: getSapHeaders(),
+                timeout: 15000
+            });
+
+            const payload = response.data?.d || response.data?.value || response.data;
+            const lineValue = pickFirst(payload, ['Line', 'Photo', 'Image'], '');
+            if (typeof lineValue === 'string' && lineValue.length > 100) {
+                return `data:image/jpeg;base64,${lineValue}`;
+            }
+
+            const urlValue = pickFirst(payload, ['PhotoUrl', 'AvatarUrl'], '');
+            if (urlValue) {
+                return String(urlValue);
+            }
+        } catch (error) {
+            // Try next candidate.
+        }
+    }
+
+    return '';
 }
 
 async function findEmployeeById(employeeId) {
@@ -179,17 +253,12 @@ async function findEmployeeById(employeeId) {
         return employee;
     }
 
-    const auth = process.env.SAP_USERNAME && process.env.SAP_PASSWORD
-        ? { username: process.env.SAP_USERNAME, password: process.env.SAP_PASSWORD }
-        : undefined;
-
-    const sapHeaders = {
-        Accept: 'application/json',
-        'sap-client': SAP_CLIENT
-    };
+    const auth = getSapAuth();
+    const sapHeaders = getSapHeaders();
 
     if (SAP_EMPLOYEE_LOOKUP_MODE === 'key') {
         const idCandidates = [...new Set([normalizedEmployeeId, employeeId])];
+        const skippedCandidates = [];
 
         for (const idCandidate of idCandidates) {
             try {
@@ -202,7 +271,8 @@ async function findEmployeeById(employeeId) {
 
                 const directEmployee = sapResponse.data?.d || sapResponse.data?.value || sapResponse.data;
                 if (directEmployee && typeof directEmployee === 'object') {
-                    return normalizeSapEmployee(directEmployee, employeeId);
+                    const photoOverride = await resolvePhotoFromDedicatedApi(employeeId);
+                    return normalizeSapEmployee(directEmployee, employeeId, photoOverride);
                 }
             } catch (candidateError) {
                 const status = candidateError.response?.status;
@@ -212,15 +282,28 @@ async function findEmployeeById(employeeId) {
                         httpStatus: status
                     });
                 }
-                if (status && status !== 404) {
+                // Some SAP backends return 400 for invalid key shape; try next candidate before failing.
+                if (status === 400 || status === 404) {
+                    skippedCandidates.push({
+                        idCandidate,
+                        status,
+                        message: candidateError.response?.data?.error?.message?.value || candidateError.message
+                    });
+                    continue;
+                }
+
+                if (status) {
                     throw candidateError;
                 }
+
+                throw candidateError;
             }
         }
 
         throw createHttpError(404, {
             error: 'Employee not found in SAP (key mode)',
-            searched: idCandidates
+            searched: idCandidates,
+            skippedCandidates
         });
     }
 
@@ -240,7 +323,8 @@ async function findEmployeeById(employeeId) {
         throw createHttpError(404, { error: 'Employee not found in SAP (filter mode)' });
     }
 
-    return normalizeSapEmployee(results[0], employeeId);
+    const photoOverride = await resolvePhotoFromDedicatedApi(employeeId);
+    return normalizeSapEmployee(results[0], employeeId, photoOverride);
 }
 
 function extractAttendanceList(attendanceResponse) {
@@ -272,14 +356,22 @@ function parseAttendanceTimestamp(record) {
 }
 
 function parseAttendanceUserId(record) {
+    const manualFieldValue = ZK_ATTENDANCE_USER_FIELD ? record?.[ZK_ATTENDANCE_USER_FIELD] : undefined;
+
+    // Prefer stable enrollment/user code fields first; keep event/log counters as last fallback only.
     const candidates = [
-        record?.userSn,
-        record?.uid,
+        manualFieldValue,
         record?.userId,
         record?.deviceUserId,
         record?.pin,
-        record?.id,
-        record?.user_id
+        record?.enrollNumber,
+        record?.enrollNo,
+        record?.employeeId,
+        record?.empCode,
+        record?.user_id,
+        record?.userSn,
+        record?.uid,
+        record?.id
     ];
 
     for (const value of candidates) {
@@ -364,8 +456,13 @@ async function waitForNextDeviceScan(timeoutMs = 45000, pollEveryMs = 2500) {
 // ============================================
 // MAIN ROUTE — get employee data by ID
 // ============================================
-app.get('/api/employee/:id', async (req, res) => {
+app.get('/api/employee/:id', async (req, res, next) => {
     const employeeId = req.params.id;
+
+    // Allow the dedicated scan route to handle /api/employee/from-device.
+    if (employeeId === 'from-device') {
+        return next();
+    }
 
     try {
         const employee = await findEmployeeById(employeeId);
@@ -405,9 +502,10 @@ app.get('/api/device/status', (req, res) => {
 
 app.get('/api/employee/from-device', async (req, res) => {
     const timeoutMs = Math.min(Number(req.query.timeoutMs || 45000), 120000);
+    let latestScan = null;
 
     try {
-        const latestScan = await waitForNextDeviceScan(timeoutMs);
+        latestScan = await waitForNextDeviceScan(timeoutMs);
 
         if (!latestScan) {
             return res.status(404).json({
@@ -427,7 +525,31 @@ app.get('/api/employee/from-device', async (req, res) => {
         });
     } catch (error) {
         if (error.status) {
-            return res.status(error.status).json(error.payload || { error: error.message });
+            return res.status(error.status).json({
+                ...(error.payload || { error: error.message }),
+                scan: latestScan
+                    ? {
+                        userId: latestScan.userId,
+                        timestamp: new Date(latestScan.timestampMs).toISOString()
+                    }
+                    : null
+            });
+        }
+
+        const sapStatus = error.response?.status;
+        if (sapStatus) {
+            return res.status(sapStatus).json({
+                error: 'SAP rejected lookup for scanned user ID.',
+                details: error.message,
+                sapStatus,
+                sapError: error.response?.data || null,
+                scan: latestScan
+                    ? {
+                        userId: latestScan.userId,
+                        timestamp: new Date(latestScan.timestampMs).toISOString()
+                    }
+                    : null
+            });
         }
 
         console.error('Device scan route error:', error.message);
@@ -443,4 +565,67 @@ app.get('/api/employee/from-device', async (req, res) => {
 // ============================================
 app.listen(PORT, () => {
     console.log(`✅ Server running at http://localhost:${PORT}`);
+});
+
+app.get('/api/leave-overview/:id', async (req, res) => {
+    const employeeId = req.params.id;
+    const normalizedEmployeeId = normalizeEmployeeInput(employeeId);
+
+    try {
+        if (!SAP_SERVICE_URL) {
+            return res.json({
+                employeeId,
+                records: []
+            });
+        }
+
+        const auth = process.env.SAP_USERNAME && process.env.SAP_PASSWORD
+            ? { username: process.env.SAP_USERNAME, password: process.env.SAP_PASSWORD }
+            : undefined;
+
+        const sapHeaders = {
+            Accept: 'application/json',
+            'sap-client': SAP_CLIENT
+        };
+
+        const sapResponse = await axios.get(`${SAP_SERVICE_URL}/${SAP_LEAVE_ENTITY}`, {
+            params: {
+                '$format': 'json',
+                '$filter': `${SAP_LEAVE_EMPLOYEE_FIELD} eq '${normalizedEmployeeId}'`
+            },
+            auth,
+            headers: sapHeaders,
+            timeout: 15000
+        });
+
+        const records = extractODataResults(sapResponse.data).map(normalizeLeaveOverviewItem);
+
+        return res.json({
+            employeeId,
+            normalizedEmployeeId,
+            count: records.length,
+            records
+        });
+    } catch (error) {
+        const status = error.response?.status;
+        if (status === 401 || status === 403) {
+            return res.status(401).json({
+                error: 'SAP login failed (401) — add SAP_USERNAME and SAP_PASSWORD to your .env file',
+                httpStatus: status
+            });
+        }
+
+        if (status === 404) {
+            return res.status(404).json({
+                error: 'LeaveOverview entity was not found in SAP service. Check SAP_LEAVE_ENTITY in .env.',
+                entity: SAP_LEAVE_ENTITY
+            });
+        }
+
+        return res.status(500).json({
+            error: 'Failed to fetch leave overview from SAP',
+            details: error.message,
+            hint: 'Check SAP_SERVICE_URL, SAP_LEAVE_ENTITY, SAP_LEAVE_EMPLOYEE_FIELD and credentials'
+        });
+    }
 });
