@@ -75,7 +75,8 @@ let currentLanguage = 'ar';
 
 // Auto-logout timer variables
 let logoutTimer = null;
-let timerSeconds = 60;
+const AUTO_LOGOUT_SECONDS = 180;
+let timerSeconds = AUTO_LOGOUT_SECONDS;
 let timerInterval = null;
 
 const translations = {
@@ -556,7 +557,7 @@ function showError(msg) {
 // AUTO-LOGOUT TIMER FUNCTIONS
 // ============================================
 function startLogoutTimer() {
-    timerSeconds = 60;
+    timerSeconds = AUTO_LOGOUT_SECONDS;
     updateTimerDisplay();
     
     timerInterval = setInterval(() => {
@@ -593,7 +594,7 @@ function updateTimerDisplay() {
     }
     
     if (timerBar) {
-        const percentage = (timerSeconds / 60) * 100;
+        const percentage = (timerSeconds / AUTO_LOGOUT_SECONDS) * 100;
         timerBar.style.width = percentage + '%';
     }
 }
