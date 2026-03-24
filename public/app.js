@@ -86,6 +86,10 @@ const translations = {
         waitingTitle: 'NEW KIOSK',
         waitingSubtitle: 'ضع إصبعك على الماسح الضوئي للوصول إلى معلوماتك',
         inputPlaceholder: 'الرقم الوظيفي',
+        scanButton: 'قراءة البصمة من الجهاز',
+        scanWaiting: 'جاري انتظار البصمة من الجهاز...',
+        scanTimeout: 'لم يتم اكتشاف بصمة جديدة. حاول مرة أخرى.',
+        scanFailed: 'تعذر قراءة البصمة من الجهاز.',
         timerPrefix: 'سيتم تسجيل الخروج تلقائياً خلال',
         timerSuffix: 'ثانية',
         verified: 'تم التحقق',
@@ -123,6 +127,10 @@ const translations = {
         waitingTitle: 'NEW KIOSK',
         waitingSubtitle: 'Place your finger on the scanner to access your information',
         inputPlaceholder: 'Employee ID',
+        scanButton: 'Read fingerprint from device',
+        scanWaiting: 'Waiting for a new fingerprint scan from the device...',
+        scanTimeout: 'No new fingerprint scan detected. Please try again.',
+        scanFailed: 'Unable to read fingerprint from device.',
         timerPrefix: 'Automatic logout in',
         timerSuffix: 'seconds',
         verified: 'Verified',
@@ -320,6 +328,7 @@ function applyTranslations() {
     document.getElementById('waiting-title').textContent = dictionary.waitingTitle;
     document.getElementById('waiting-subtitle').textContent = dictionary.waitingSubtitle;
     document.getElementById('emp-id-input').placeholder = dictionary.inputPlaceholder;
+    document.getElementById('device-scan-btn-text').textContent = dictionary.scanButton;
     document.getElementById('timer-prefix').textContent = dictionary.timerPrefix;
     document.getElementById('timer-suffix').textContent = dictionary.timerSuffix;
     document.getElementById('verified-text').textContent = dictionary.verified;
@@ -382,6 +391,37 @@ async function fetchEmployee() {
         }
     } finally {
         document.getElementById('loading').classList.add('hidden');
+    }
+}
+
+async function fetchEmployeeFromDevice() {
+    const scanButton = document.getElementById('device-scan-btn');
+    const previousText = document.getElementById('device-scan-btn-text').textContent;
+
+    scanButton.disabled = true;
+    document.getElementById('device-scan-btn-text').textContent = t('scanWaiting');
+    document.getElementById('loading').classList.remove('hidden');
+
+    try {
+        const response = await fetch('/api/employee/from-device?timeoutMs=45000');
+        const payload = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+            if (response.status === 404) {
+                throw new Error(t('scanTimeout'));
+            }
+            throw new Error(payload.error || t('scanFailed'));
+        }
+
+        currentEmployee = payload;
+        document.getElementById('emp-id-input').value = payload.hrCode || '';
+        displayEmployee(payload);
+    } catch (error) {
+        showError(error.message || t('scanFailed'));
+    } finally {
+        document.getElementById('loading').classList.add('hidden');
+        scanButton.disabled = false;
+        document.getElementById('device-scan-btn-text').textContent = previousText;
     }
 }
 
