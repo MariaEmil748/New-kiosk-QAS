@@ -136,14 +136,24 @@ function isLikelyPlaceholderBase64(value) {
     return /^A+$/.test(compact);
 }
 
+function toImageDataUrl(value, mimeType = 'image/jpeg') {
+    if (typeof value !== 'string') return '';
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+    if (trimmed.startsWith('data:image/')) return trimmed;
+    if (isLikelyPlaceholderBase64(trimmed)) return '';
+    if (trimmed.length < 100) return '';
+    return `data:${mimeType};base64,${trimmed}`;
+}
+
 function normalizeSapEmployee(sapEmployee, requestedId, photoOverride = '') {
     const employeeName = pickFirst(sapEmployee, ['EmployeeName', 'FullName', 'Name', 'ENAME'], 'Employee');
     const employeeId = String(pickFirst(sapEmployee, ['EmployeeId', 'EmployeeID', 'HRCode', 'PERNR', 'EmpCode'], requestedId));
-    const lineValue = pickFirst(sapEmployee, ['Line'], '');
-    const hasImageData = typeof lineValue === 'string' && lineValue.length > 100 && !isLikelyPlaceholderBase64(lineValue);
+    const base64FromSap = pickFirst(sapEmployee, ['PhotoBase64', 'PHOTO_BASE64', 'Line', 'Photo', 'Image'], '');
+    const photoFromBase64 = toImageDataUrl(base64FromSap);
     const photoUrlFromSap = pickFirst(sapEmployee, ['PhotoUrl', 'AvatarUrl'], '');
-    const finalPhoto = photoOverride || photoUrlFromSap || (hasImageData ? `data:image/jpeg;base64,${lineValue}` : `https://ui-avatars.com/api/?name=${encodeURIComponent(employeeName)}&background=1d4ed8&color=fff&size=200`);
-    const hasPhoto = Boolean(photoOverride || photoUrlFromSap || hasImageData);
+    const finalPhoto = photoOverride || photoFromBase64 || photoUrlFromSap || `https://ui-avatars.com/api/?name=${encodeURIComponent(employeeName)}&background=1d4ed8&color=fff&size=200`;
+    const hasPhoto = Boolean(photoOverride || photoFromBase64 || photoUrlFromSap);
 
     return {
         name: employeeName,
@@ -225,10 +235,9 @@ async function resolvePhotoFromDedicatedApi(employeeId) {
             });
 
             const payload = response.data?.d || response.data?.value || response.data;
-            const lineValue = pickFirst(payload, ['Line', 'Photo', 'Image'], '');
-            if (typeof lineValue === 'string' && lineValue.length > 100) {
-                return `data:image/jpeg;base64,${lineValue}`;
-            }
+            const photoBase64Value = pickFirst(payload, ['PhotoBase64', 'PHOTO_BASE64', 'Line', 'Photo', 'Image'], '');
+            const photoDataUrl = toImageDataUrl(photoBase64Value);
+            if (photoDataUrl) return photoDataUrl;
 
             const urlValue = pickFirst(payload, ['PhotoUrl', 'AvatarUrl'], '');
             if (urlValue) {
