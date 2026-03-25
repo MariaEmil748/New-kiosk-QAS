@@ -152,7 +152,7 @@ function normalizeSapEmployee(sapEmployee, requestedId, photoOverride = '') {
     const base64FromSap = pickFirst(sapEmployee, ['PhotoBase64', 'PHOTO_BASE64', 'Line', 'Photo', 'Image'], '');
     const photoFromBase64 = toImageDataUrl(base64FromSap);
     const photoUrlFromSap = pickFirst(sapEmployee, ['PhotoUrl', 'AvatarUrl'], '');
-    const finalPhoto = photoOverride || photoFromBase64 || photoUrlFromSap || `https://ui-avatars.com/api/?name=${encodeURIComponent(employeeName)}&background=1d4ed8&color=fff&size=200`;
+    const finalPhoto = photoOverride || photoFromBase64 || photoUrlFromSap || `https://ui-avatars.com/api/?name=${encodeURIComponent(employeeName)}&background=1d4ed8&color=fff&size=512`;
     const hasPhoto = Boolean(photoOverride || photoFromBase64 || photoUrlFromSap);
 
     return {

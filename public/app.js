@@ -530,7 +530,7 @@ function displayEmployee(employee, shouldLoadLeaveHistory = true) {
     const safeTitle = employee.title || t('unavailable');
     const safeLocation = employee.location || t('unavailable');
     const safeApprover = employee.approver || t('unavailable');
-    const safePhoto = employee.photo || 'https://ui-avatars.com/api/?name=Employee&background=1d4ed8&color=fff&size=200';
+    const safePhoto = employee.photo || 'https://ui-avatars.com/api/?name=Employee&background=1d4ed8&color=fff&size=512';
 
     // Set profile data
     document.getElementById('emp-photo').src = safePhoto;
