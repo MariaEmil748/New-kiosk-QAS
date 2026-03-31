@@ -73,6 +73,7 @@ const mockEmployees = {
 let currentEmployee = null;
 let currentLanguage = 'ar';
 let currentLeaveRecords = [];
+let currentLeaveBundle = null;
 
 // Auto-logout timer variables
 let logoutTimer = null;
@@ -108,8 +109,18 @@ const translations = {
         leaveHdrTotal: 'الإجمالي',
         leaveHdrUsed: 'المستخدم',
         leaveHdrRemaining: 'المتبقي',
+        leaveHdrStatus: 'الحالة',
         leaveHdrFrom: 'من',
         leaveHdrTo: 'إلى',
+        leaveRequestsTitle: 'طلبات الموظف',
+        leaveRequestedTotal: 'إجمالي الأيام المطلوبة',
+        leaveTotalVacations: 'إجمالي رصيد الإجازات',
+        leaveRemainingVacations: 'المتبقي من رصيد الإجازات',
+        leaveAbsenceQuotaTitle: 'رصيد الإجازات',
+        leaveHolidaysTitle: 'العطلات الرسمية',
+        leaveTypesTitle: 'أنواع الإجازات',
+        leaveLeavesTitle: 'طلبات الإجازة',
+        leaveNewLeavesTitle: 'طلبات الإجازة الجديدة',
         sectionTitle: 'الخدمات المتاحة',
         unavailable: 'غير متوفر',
         noPhotoInSap: 'لا توجد صورة في SAP',
@@ -160,8 +171,18 @@ const translations = {
         leaveHdrTotal: 'Total',
         leaveHdrUsed: 'Used',
         leaveHdrRemaining: 'Remaining',
+        leaveHdrStatus: 'Status',
         leaveHdrFrom: 'From',
         leaveHdrTo: 'To',
+        leaveRequestsTitle: 'Employee requests',
+        leaveRequestedTotal: 'Requested total days',
+        leaveTotalVacations: 'Total vacation balance',
+        leaveRemainingVacations: 'Remaining vacation balance',
+        leaveAbsenceQuotaTitle: 'Absence quota',
+        leaveHolidaysTitle: 'Holidays',
+        leaveTypesTitle: 'Leave types',
+        leaveLeavesTitle: 'Leaves',
+        leaveNewLeavesTitle: 'New leaves',
         sectionTitle: 'Available services',
         unavailable: 'Not available',
         noPhotoInSap: 'No photo in SAP',
@@ -464,42 +485,121 @@ function escapeHtml(value) {
         .replace(/'/g, '&#39;');
 }
 
-function renderLeaveHistory(records) {
+function renderGenericLeaveSection(title, rows) {
+    const safeRows = Array.isArray(rows) ? rows : [];
+    if (!safeRows.length) {
+        return `
+            <div class="leave-subsection">
+                <div class="leave-subsection-title">${escapeHtml(title)}</div>
+                <div class="leave-history-message">${t('leaveNoData')}</div>
+            </div>
+        `;
+    }
+
+    const first = safeRows[0] || {};
+    const keys = Object.keys(first)
+        .filter((key) => key !== '__metadata' && key !== 'raw')
+        .slice(0, 6);
+
+    if (!keys.length) {
+        return `
+            <div class="leave-subsection">
+                <div class="leave-subsection-title">${escapeHtml(title)}</div>
+                <div class="leave-history-message">${t('leaveNoData')}</div>
+            </div>
+        `;
+    }
+
+    const headerHtml = keys.map((key) => `<th>${escapeHtml(key)}</th>`).join('');
+    const bodyHtml = safeRows.slice(0, 20).map((row) => {
+        const cells = keys.map((key) => `<td>${escapeHtml(row?.[key] ?? '-')}</td>`).join('');
+        return `<tr>${cells}</tr>`;
+    }).join('');
+
+    return `
+        <div class="leave-subsection">
+            <div class="leave-subsection-title">${escapeHtml(title)}</div>
+            <table class="leave-history-table">
+                <thead><tr>${headerHtml}</tr></thead>
+                <tbody>${bodyHtml}</tbody>
+            </table>
+        </div>
+    `;
+}
+
+function getRequestedTotal(bundle, records) {
+    if (bundle && Number.isFinite(Number(bundle.requestedTotal))) {
+        return Number(bundle.requestedTotal);
+    }
+
+    const safeRecords = Array.isArray(records) ? records : [];
+    return safeRecords.reduce((sum, row) => sum + (Number(row.usedDays) || 0), 0);
+}
+
+function getVacationSummary(bundle) {
+    const total = bundle && Number.isFinite(Number(bundle.totalVacations)) ? Number(bundle.totalVacations) : 0;
+    const remaining = bundle && Number.isFinite(Number(bundle.remainingVacations)) ? Number(bundle.remainingVacations) : 0;
+    return { total, remaining };
+}
+
+function renderLeaveHistory(records, bundle = currentLeaveBundle) {
     const content = document.getElementById('leave-history-content');
     if (!content) return;
 
-    if (!Array.isArray(records) || records.length === 0) {
-        content.innerHTML = `<div class="leave-history-message">${t('leaveNoData')}</div>`;
-        return;
-    }
+    const safeRecords = Array.isArray(records) ? records : [];
+    const requestedTotal = getRequestedTotal(bundle, safeRecords);
+    const vacationSummary = getVacationSummary(bundle);
+    const overviewTitleHtml = `<div class="leave-subsection-title">${t('leaveRequestsTitle')}</div>`;
+    const overviewHtml = safeRecords.length
+        ? `
+            ${overviewTitleHtml}
+            <table class="leave-history-table">
+                <thead>
+                    <tr>
+                        <th>${t('leaveHdrType')}</th>
+                        <th>${t('leaveHdrTotal')}</th>
+                        <th>${t('leaveHdrUsed')}</th>
+                        <th>${t('leaveHdrRemaining')}</th>
+                        <th>${t('leaveHdrStatus')}</th>
+                        <th>${t('leaveHdrFrom')}</th>
+                        <th>${t('leaveHdrTo')}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${safeRecords.map((record) => `
+                        <tr>
+                            <td>${escapeHtml(record.leaveType || '-')}</td>
+                            <td>${escapeHtml(record.totalDays ?? 0)}</td>
+                            <td>${escapeHtml(record.usedDays ?? 0)}</td>
+                            <td>${escapeHtml(record.remainingDays ?? 0)}</td>
+                            <td>${escapeHtml(record.status || '-')}</td>
+                            <td>${escapeHtml(record.fromDate || '-')}</td>
+                            <td>${escapeHtml(record.toDate || '-')}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `
+        : `${overviewTitleHtml}<div class="leave-history-message">${t('leaveNoData')}</div>`;
 
-    const rows = records.map((record) => {
-        return `
-            <tr>
-                <td>${escapeHtml(record.leaveType || '-')}</td>
-                <td>${escapeHtml(record.totalDays ?? 0)}</td>
-                <td>${escapeHtml(record.usedDays ?? 0)}</td>
-                <td>${escapeHtml(record.remainingDays ?? 0)}</td>
-                <td>${escapeHtml(record.fromDate || '-')}</td>
-                <td>${escapeHtml(record.toDate || '-')}</td>
-            </tr>
-        `;
-    }).join('');
+    const extraSections = bundle
+        ? [
+            renderGenericLeaveSection(t('leaveAbsenceQuotaTitle'), bundle.absenceQuota),
+            renderGenericLeaveSection(t('leaveHolidaysTitle'), bundle.holidays),
+            renderGenericLeaveSection(t('leaveTypesTitle'), bundle.leaveTypes),
+            renderGenericLeaveSection(t('leaveLeavesTitle'), bundle.leaves),
+            renderGenericLeaveSection(t('leaveNewLeavesTitle'), bundle.newLeaves)
+        ].join('')
+        : '';
 
     content.innerHTML = `
-        <table class="leave-history-table">
-            <thead>
-                <tr>
-                    <th>${t('leaveHdrType')}</th>
-                    <th>${t('leaveHdrTotal')}</th>
-                    <th>${t('leaveHdrUsed')}</th>
-                    <th>${t('leaveHdrRemaining')}</th>
-                    <th>${t('leaveHdrFrom')}</th>
-                    <th>${t('leaveHdrTo')}</th>
-                </tr>
-            </thead>
-            <tbody>${rows}</tbody>
-        </table>
+        <div class="leave-summary-row">
+            <div class="leave-summary-badge">${t('leaveRequestedTotal')}: <strong>${escapeHtml(requestedTotal.toFixed(2))}</strong></div>
+            <div class="leave-summary-badge">${t('leaveTotalVacations')}: <strong>${escapeHtml(vacationSummary.total.toFixed(2))}</strong></div>
+            <div class="leave-summary-badge">${t('leaveRemainingVacations')}: <strong>${escapeHtml(vacationSummary.remaining.toFixed(2))}</strong></div>
+        </div>
+        ${overviewHtml}
+        ${extraSections}
     `;
 }
 
@@ -510,16 +610,20 @@ async function loadLeaveHistory(employeeId) {
     content.innerHTML = `<div class="leave-history-message">${t('leaveLoading')}</div>`;
 
     try {
-        const response = await fetch(`/api/leave-overview/${encodeURIComponent(employeeId)}`);
+        const response = await fetch(`/api/kiosk3/overview/${encodeURIComponent(employeeId)}`);
         if (!response.ok) {
             throw new Error(`Leave API returned ${response.status}`);
         }
 
         const payload = await response.json();
-        currentLeaveRecords = Array.isArray(payload.records) ? payload.records : [];
-        renderLeaveHistory(currentLeaveRecords);
+        currentLeaveBundle = payload;
+        currentLeaveRecords = Array.isArray(payload.leaveOverview)
+            ? payload.leaveOverview
+            : (Array.isArray(payload.records) ? payload.records : []);
+        renderLeaveHistory(currentLeaveRecords, currentLeaveBundle);
     } catch (error) {
         currentLeaveRecords = [];
+        currentLeaveBundle = null;
         content.innerHTML = `<div class="leave-history-message">${t('leaveLoadFailed')}</div>`;
     }
 }
@@ -554,7 +658,8 @@ function displayEmployee(employee, shouldLoadLeaveHistory = true) {
             loadLeaveHistory(leaveLookupId);
         } else {
             currentLeaveRecords = [];
-            renderLeaveHistory(currentLeaveRecords);
+            currentLeaveBundle = null;
+            renderLeaveHistory(currentLeaveRecords, currentLeaveBundle);
         }
     }
 }
@@ -643,7 +748,8 @@ function goBack() {
     document.getElementById('data-screen').classList.add('hidden');
     document.getElementById('emp-id-input').value = '';
     currentLeaveRecords = [];
-    renderLeaveHistory(currentLeaveRecords);
+    currentLeaveBundle = null;
+    renderLeaveHistory(currentLeaveRecords, currentLeaveBundle);
     currentEmployee = null;
 }
 

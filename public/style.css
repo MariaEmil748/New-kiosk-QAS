@@ -390,6 +390,45 @@ body {
     overflow-x: auto;
 }
 
+.leave-summary-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.leave-summary-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent);
+    background: rgba(29, 78, 216, 0.08);
+    border: 1px solid rgba(29, 78, 216, 0.22);
+    border-radius: 999px;
+    padding: 7px 12px;
+    margin-bottom: 0;
+}
+
+.leave-summary-badge strong {
+    color: var(--text);
+    font-size: 13px;
+}
+
+.leave-subsection {
+    margin-top: 14px;
+    border-top: 1px dashed var(--border2);
+    padding-top: 12px;
+}
+
+.leave-subsection-title {
+    font-size: 12px;
+    font-weight: 800;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+
 .leave-history-message {
     font-size: 13px;
     color: var(--text-muted);
