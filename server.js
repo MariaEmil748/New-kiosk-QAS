@@ -32,6 +32,11 @@ const SAP_KIOSK3_LEAVE_OVERVIEW_ENTITY = process.env.SAP_KIOSK3_LEAVE_OVERVIEW_E
 const SAP_KIOSK3_LEAVE_TYPES_ENTITY = process.env.SAP_KIOSK3_LEAVE_TYPES_ENTITY || 'LeaveTypesSet';
 const SAP_KIOSK3_LEAVES_ENTITY = process.env.SAP_KIOSK3_LEAVES_ENTITY || 'LeavesSet';
 const SAP_KIOSK3_NEW_LEAVES_ENTITY = process.env.SAP_KIOSK3_NEW_LEAVES_ENTITY || 'NewLeavesSet';
+const SAP_LEAVE_OVERVIEW_NEW_SERVICE_URL = normalizeServiceUrl(process.env.SAP_LEAVE_OVERVIEW_NEW_SERVICE_URL || '');
+const SAP_LEAVE_CREATE_SERVICE_URL = normalizeServiceUrl(process.env.SAP_LEAVE_CREATE_SERVICE_URL || '');
+const SAP_LEAVE_CREATE_FUNCTION = process.env.SAP_LEAVE_CREATE_FUNCTION || 'YSP_CREATE_LEAVE_REQUEST';
+const SAP_LEAVE_CREATE_ENTITY = process.env.SAP_LEAVE_CREATE_ENTITY || 'LeaveRequestSet';
+const SAP_LEAVE_CREATE_METHOD = (process.env.SAP_LEAVE_CREATE_METHOD || 'GET').toUpperCase();
 
 const ZK_DEVICE_ENABLED = String(process.env.ZK_DEVICE_ENABLED || 'false').toLowerCase() === 'true';
 const ZK_DEVICE_IP = process.env.ZK_DEVICE_IP || '';
@@ -216,6 +221,33 @@ function parseSapDateValue(value) {
     return text;
 }
 
+function formatSapDateInput(value) {
+    const text = String(value || '').trim();
+    if (!text) return '';
+    const digits = text.replace(/\D/g, '');
+    if (digits.length === 8) return digits;
+    return text;
+}
+
+function formatSapTimeInput(value) {
+    const text = String(value || '').trim();
+    if (!text) return '';
+    const digits = text.replace(/\D/g, '');
+    if (digits.length === 4) return `${digits}00`;
+    if (digits.length === 6) return digits;
+    return text;
+}
+
+function getLeaveCreateServiceUrl() {
+    if (SAP_LEAVE_CREATE_SERVICE_URL) return SAP_LEAVE_CREATE_SERVICE_URL;
+    if (SAP_LEAVE_OVERVIEW_NEW_SERVICE_URL) return SAP_LEAVE_OVERVIEW_NEW_SERVICE_URL;
+    if (!SAP_SERVICE_URL) return '';
+
+    const hostMatch = SAP_SERVICE_URL.match(/^(https?:\/\/[^/]+)/i);
+    if (!hostMatch) return '';
+    return `${hostMatch[1]}/sap/opu/odata/SAP/ZDATA_KIOSK_LEAVE_OVERVIEW_NEW_SRV`;
+}
+
 function getDefaultLeaveTypes(pernr) {
     return [
         { Pernr: pernr, Subty: 'EXIN', Description: 'Excuse - IN', Type: 'Period' },
@@ -304,6 +336,47 @@ function getKiosk3ServiceUrl() {
     const hostMatch = SAP_SERVICE_URL.match(/^(https?:\/\/[^/]+)/i);
     if (!hostMatch) return '';
     return `${hostMatch[1]}/sap/opu/odata/SAP/ZDATA_KIOSK3_SRV`;
+}
+
+function getLeaveOverviewNewServiceUrl() {
+    if (SAP_LEAVE_OVERVIEW_NEW_SERVICE_URL) return SAP_LEAVE_OVERVIEW_NEW_SERVICE_URL;
+    if (!SAP_SERVICE_URL) return '';
+
+    const hostMatch = SAP_SERVICE_URL.match(/^(https?:\/\/[^/]+)/i);
+    if (!hostMatch) return '';
+    return `${hostMatch[1]}/sap/opu/odata/SAP/ZDATA_KIOSK_LEAVE_OVERVIEW_NEW_SRV`;
+}
+
+async function fetchAbsenceQuotaPreferred(normalizedEmployeeId) {
+    const preferredService = getLeaveOverviewNewServiceUrl();
+    const shortId = String(Number(normalizedEmployeeId));
+    const pernrCandidates = [...new Set([normalizedEmployeeId, shortId])].filter(Boolean);
+
+    if (preferredService) {
+        for (const pernr of pernrCandidates) {
+            try {
+                const response = await axios.get(`${preferredService}/${SAP_KIOSK3_ABSENCE_ENTITY}`, {
+                    params: {
+                        '$format': 'json',
+                        '$filter': `Pernr eq '${pernr}'`
+                    },
+                    auth: getSapAuth(),
+                    headers: getSapHeaders(),
+                    timeout: 15000
+                });
+
+                const rows = extractODataResults(response.data);
+                if (rows.length) return rows;
+            } catch (error) {
+                const status = error.response?.status;
+                if (status === 400 || status === 404) {
+                    continue;
+                }
+            }
+        }
+    }
+
+    return fetchKiosk3Collection(SAP_KIOSK3_ABSENCE_ENTITY, normalizedEmployeeId);
 }
 
 async function fetchKiosk3Collection(entitySetName, normalizedEmployeeId, options = {}) {
@@ -797,7 +870,7 @@ app.get('/api/kiosk3/overview/:id', async (req, res) => {
         }
 
         let [absenceQuota, holidays, leaveOverviewRaw, leaveTypes, leaves, newLeaves, legacyLeaveRecords] = await Promise.all([
-            fetchKiosk3Collection(SAP_KIOSK3_ABSENCE_ENTITY, normalizedEmployeeId),
+            fetchAbsenceQuotaPreferred(normalizedEmployeeId),
             fetchKiosk3Collection(SAP_KIOSK3_HOLIDAYS_ENTITY, normalizedEmployeeId),
             fetchKiosk3LeaveOverview(SAP_KIOSK3_LEAVE_OVERVIEW_ENTITY, normalizedEmployeeId),
             fetchKiosk3Collection(SAP_KIOSK3_LEAVE_TYPES_ENTITY, normalizedEmployeeId),
@@ -849,6 +922,10 @@ app.get('/api/kiosk3/overview/:id', async (req, res) => {
             const value = Number.parseFloat(pickFirst(row, ['Entitle'], '0'));
             return sum + (Number.isFinite(value) ? value : 0);
         }, 0);
+        const usedVacations = quotaRowsForTotals.reduce((sum, row) => {
+            const value = Number.parseFloat(pickFirst(row, ['Deduct'], '0'));
+            return sum + (Number.isFinite(value) ? value : 0);
+        }, 0);
         const remainingVacations = quotaRowsForTotals.reduce((sum, row) => {
             const value = Number.parseFloat(pickFirst(row, ['Rest'], '0'));
             return sum + (Number.isFinite(value) ? value : 0);
@@ -870,6 +947,7 @@ app.get('/api/kiosk3/overview/:id', async (req, res) => {
             },
             requestedTotal,
             totalVacations,
+            usedVacations,
             remainingVacations,
             absenceQuota,
             holidays,
@@ -894,6 +972,120 @@ app.get('/api/kiosk3/overview/:id', async (req, res) => {
             hint: 'Check SAP_KIOSK3_SERVICE_URL and SAP credentials'
         });
     }
+});
+
+app.post('/api/leave-request', async (req, res) => {
+    const employeeId = normalizeEmployeeInput(req.body?.employeeId || req.body?.pernr || '');
+    const subtype = String(req.body?.subty || '').trim();
+    const begda = formatSapDateInput(req.body?.begda || req.body?.fromDate || '');
+    const endda = formatSapDateInput(req.body?.endda || req.body?.toDate || '');
+    const begti = formatSapTimeInput(req.body?.begti || req.body?.beginTime || '');
+    const endti = formatSapTimeInput(req.body?.endti || req.body?.endTime || '');
+    const note = String(req.body?.note || '').trim();
+
+    if (!employeeId || !subtype || !begda || !endda) {
+        return res.status(400).json({
+            error: 'Missing required fields: employeeId, subty, begda, endda'
+        });
+    }
+
+    const serviceUrl = getLeaveCreateServiceUrl();
+    if (!serviceUrl) {
+        return res.status(400).json({
+            error: 'Leave create SAP service URL is not configured.',
+            hint: 'Set SAP_LEAVE_CREATE_SERVICE_URL in .env'
+        });
+    }
+
+    const payloadUpper = {
+        PERNR: employeeId,
+        SUBTY: subtype,
+        BEGDA: begda,
+        ENDDA: endda,
+        BEGTI: begti,
+        ENDTI: endti,
+        NOTE: note
+    };
+
+    const payloadTitle = {
+        Pernr: employeeId,
+        Subty: subtype,
+        Begda: begda,
+        Endda: endda,
+        Begti: begti,
+        Endti: endti,
+        Note: note
+    };
+
+    const attempts = [];
+    const auth = getSapAuth();
+    const headers = getSapHeaders();
+
+    const attemptPlans = [
+        {
+            label: `GET ${SAP_LEAVE_CREATE_FUNCTION}`,
+            execute: () => axios.get(`${serviceUrl}/${SAP_LEAVE_CREATE_FUNCTION}`, {
+                params: {
+                    ...payloadUpper,
+                    '$format': 'json'
+                },
+                auth,
+                headers,
+                timeout: 20000
+            })
+        },
+        {
+            label: `GET ${SAP_LEAVE_CREATE_FUNCTION} (title-case params)`,
+            execute: () => axios.get(`${serviceUrl}/${SAP_LEAVE_CREATE_FUNCTION}`, {
+                params: {
+                    ...payloadTitle,
+                    '$format': 'json'
+                },
+                auth,
+                headers,
+                timeout: 20000
+            })
+        },
+        {
+            label: `POST ${SAP_LEAVE_CREATE_ENTITY}`,
+            execute: () => axios.post(`${serviceUrl}/${SAP_LEAVE_CREATE_ENTITY}`, payloadTitle, {
+                params: { '$format': 'json' },
+                auth,
+                headers,
+                timeout: 20000
+            })
+        }
+    ];
+
+    if (SAP_LEAVE_CREATE_METHOD === 'POST') {
+        attemptPlans.reverse();
+    }
+
+    for (const plan of attemptPlans) {
+        try {
+            const response = await plan.execute();
+            const data = response.data?.d || response.data?.value || response.data || {};
+            return res.json({
+                ok: true,
+                status: data.STATUS ?? data.Status ?? 0,
+                deduction: data.DEDUCTION ?? data.Deduction ?? '',
+                messages: data.MESSAGES_TAB ?? data.MessagesTab ?? data.messages ?? [],
+                sapResponse: data
+            });
+        } catch (error) {
+            attempts.push({
+                attempt: plan.label,
+                status: error.response?.status || null,
+                message: error.response?.data?.error?.message?.value || error.message
+            });
+        }
+    }
+
+    return res.status(502).json({
+        error: 'SAP leave request endpoint is not exposed or rejected the request.',
+        hint: 'Publish a FunctionImport for YSP_CREATE_LEAVE_REQUEST or a creatable LeaveRequest entity in OData service.',
+        attempts
+    });
 });
 
 // ============================================

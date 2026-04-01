@@ -54,11 +54,11 @@ const mockEmployees = {
     },
     "4688": {
         name: "maria",
-        hrCode: "00004688",
-        title: "IT-Applications Section Head",
-        location: "HQ Application",
+        hrCode: "000046",
+        title: "IT",
+        location: "HQ ",
         photo: "https://ui-avatars.com/api/?name=Bassem+Hamed&background=1d4ed8&color=fff&size=200",
-        approver: "Mohamed Ali Mohamed Hussein",
+        approver: "Mohamed ",
         annualLeave: 21,
         sickLeave: 0,
         remainingLeave: 21,
@@ -115,12 +115,16 @@ const translations = {
         leaveRequestsTitle: 'طلبات الموظف',
         leaveRequestedTotal: 'إجمالي الأيام المطلوبة',
         leaveTotalVacations: 'إجمالي رصيد الإجازات',
+        leaveUsedVacations: 'المستخدم من رصيد الإجازات',
         leaveRemainingVacations: 'المتبقي من رصيد الإجازات',
+        leaveQuotaMissing: 'لا توجد بيانات رصيد إجازات (Entitle/Deduct/Rest) من SAP لهذا الموظف.',
         leaveAbsenceQuotaTitle: 'رصيد الإجازات',
         leaveHolidaysTitle: 'العطلات الرسمية',
         leaveTypesTitle: 'أنواع الإجازات',
         leaveLeavesTitle: 'طلبات الإجازة',
         leaveNewLeavesTitle: 'طلبات الإجازة الجديدة',
+        leaveSubmitFailed: 'تعذر إرسال طلب الإجازة.',
+        leaveRequiredFields: 'يرجى اختيار نوع الإجازة وإدخال التاريخ من وإلى.',
         sectionTitle: 'الخدمات المتاحة',
         unavailable: 'غير متوفر',
         noPhotoInSap: 'لا توجد صورة في SAP',
@@ -177,12 +181,16 @@ const translations = {
         leaveRequestsTitle: 'Employee requests',
         leaveRequestedTotal: 'Requested total days',
         leaveTotalVacations: 'Total vacation balance',
+        leaveUsedVacations: 'Used vacation balance',
         leaveRemainingVacations: 'Remaining vacation balance',
+        leaveQuotaMissing: 'No SAP quota data (Entitle/Deduct/Rest) was returned for this employee.',
         leaveAbsenceQuotaTitle: 'Absence quota',
         leaveHolidaysTitle: 'Holidays',
         leaveTypesTitle: 'Leave types',
         leaveLeavesTitle: 'Leaves',
         leaveNewLeavesTitle: 'New leaves',
+        leaveSubmitFailed: 'Unable to submit leave request.',
+        leaveRequiredFields: 'Please select leave type and both from/to dates.',
         sectionTitle: 'Available services',
         unavailable: 'Not available',
         noPhotoInSap: 'No photo in SAP',
@@ -276,10 +284,13 @@ function renderActionForm(actionKey) {
                 ${formField(currentLanguage === 'ar' ? 'نوع الاجازة' : 'Leave type', `
                     <select class="form-select" id="f-type">
                         <option value="">${currentLanguage === 'ar' ? 'اختر نوع الاجازة' : 'Select leave type'}</option>
-                        <option value="annual">${currentLanguage === 'ar' ? 'اجازة سنوية' : 'Annual leave'}</option>
-                        <option value="sick">${currentLanguage === 'ar' ? 'اجازة مرضية' : 'Sick leave'}</option>
-                        <option value="emergency">${currentLanguage === 'ar' ? 'اجازة طارئة' : 'Emergency leave'}</option>
-                        <option value="unpaid">${currentLanguage === 'ar' ? 'اجازة بدون مرتب' : 'Unpaid leave'}</option>
+                        <option value="0001">${currentLanguage === 'ar' ? 'اجازة سنوية' : 'Annual leave'}</option>
+                        <option value="0002">${currentLanguage === 'ar' ? 'اجازة أمومة' : 'Maternity leave'}</option>
+                        <option value="0003">${currentLanguage === 'ar' ? 'اجازة حج' : 'Haj leave'}</option>
+                        <option value="0004">${currentLanguage === 'ar' ? 'اجازة عسكرية' : 'Military leave'}</option>
+                        <option value="0005">${currentLanguage === 'ar' ? 'اجازة عزاء' : 'Condolences leave'}</option>
+                        <option value="0006">${currentLanguage === 'ar' ? 'اجازة زواج' : 'Marriage leave'}</option>
+                        <option value="0007">${currentLanguage === 'ar' ? 'اجازة بدون مرتب' : 'Unpaid leave'}</option>
                     </select>
                 `)}
                 <div class="form-row">
@@ -538,8 +549,9 @@ function getRequestedTotal(bundle, records) {
 
 function getVacationSummary(bundle) {
     const total = bundle && Number.isFinite(Number(bundle.totalVacations)) ? Number(bundle.totalVacations) : 0;
+    const used = bundle && Number.isFinite(Number(bundle.usedVacations)) ? Number(bundle.usedVacations) : 0;
     const remaining = bundle && Number.isFinite(Number(bundle.remainingVacations)) ? Number(bundle.remainingVacations) : 0;
-    return { total, remaining };
+    return { total, used, remaining };
 }
 
 function renderLeaveHistory(records, bundle = currentLeaveBundle) {
@@ -549,6 +561,7 @@ function renderLeaveHistory(records, bundle = currentLeaveBundle) {
     const safeRecords = Array.isArray(records) ? records : [];
     const requestedTotal = getRequestedTotal(bundle, safeRecords);
     const vacationSummary = getVacationSummary(bundle);
+    const hasQuotaRows = bundle && Array.isArray(bundle.absenceQuota) && bundle.absenceQuota.length > 0;
     const overviewTitleHtml = `<div class="leave-subsection-title">${t('leaveRequestsTitle')}</div>`;
     const overviewHtml = safeRecords.length
         ? `
@@ -596,8 +609,10 @@ function renderLeaveHistory(records, bundle = currentLeaveBundle) {
         <div class="leave-summary-row">
             <div class="leave-summary-badge">${t('leaveRequestedTotal')}: <strong>${escapeHtml(requestedTotal.toFixed(2))}</strong></div>
             <div class="leave-summary-badge">${t('leaveTotalVacations')}: <strong>${escapeHtml(vacationSummary.total.toFixed(2))}</strong></div>
+            <div class="leave-summary-badge">${t('leaveUsedVacations')}: <strong>${escapeHtml(vacationSummary.used.toFixed(2))}</strong></div>
             <div class="leave-summary-badge">${t('leaveRemainingVacations')}: <strong>${escapeHtml(vacationSummary.remaining.toFixed(2))}</strong></div>
         </div>
+        ${hasQuotaRows ? '' : `<div class="leave-history-message">${t('leaveQuotaMissing')}</div>`}
         ${overviewHtml}
         ${extraSections}
     `;
@@ -719,7 +734,12 @@ function handleAction(actionKey) {
 // ============================================
 // SUBMIT ACTION
 // ============================================
-function submitAction(actionName) {
+async function submitAction(actionName) {
+    if (actionName === 'leave-request') {
+        await submitLeaveRequest();
+        return;
+    }
+
     // Show success message
     document.getElementById('modal-body').innerHTML = `
         <div class="success-msg">
@@ -729,6 +749,64 @@ function submitAction(actionName) {
         </div>
     `;
     setTimeout(() => closeModal(), 2500);
+}
+
+async function submitLeaveRequest() {
+    const subty = document.getElementById('f-type')?.value?.trim();
+    const fromDate = document.getElementById('f-from')?.value?.trim();
+    const toDate = document.getElementById('f-to')?.value?.trim();
+    const note = document.getElementById('f-notes')?.value?.trim() || '';
+    const employeeId = String(currentEmployee?.hrCode || '').trim();
+
+    if (!employeeId || !subty || !fromDate || !toDate) {
+        showError(t('leaveRequiredFields'));
+        return;
+    }
+
+    document.getElementById('loading').classList.remove('hidden');
+
+    try {
+        const response = await fetch('/api/leave-request', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                employeeId,
+                subty,
+                begda: fromDate,
+                endda: toDate,
+                note
+            })
+        });
+
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload.ok === false || payload.status === 1) {
+            const message = payload.error || payload.hint || t('leaveSubmitFailed');
+            throw new Error(message);
+        }
+
+        const deduction = payload.deduction ? `<p>${escapeHtml(payload.deduction)}</p>` : '';
+        document.getElementById('modal-body').innerHTML = `
+            <div class="success-msg">
+                <div class="success-icon">✅</div>
+                <h4>${t('successTitle')}</h4>
+                <p>${t('successMessageStart')}${actionLabel('leave-request')}${t('successMessageEnd')}</p>
+                ${deduction}
+            </div>
+        `;
+
+        setTimeout(() => {
+            closeModal();
+            if (employeeId) {
+                loadLeaveHistory(employeeId);
+            }
+        }, 2500);
+    } catch (error) {
+        showError(error.message || t('leaveSubmitFailed'));
+    } finally {
+        document.getElementById('loading').classList.add('hidden');
+    }
 }
 
 // ============================================
