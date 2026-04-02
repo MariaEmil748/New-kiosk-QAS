@@ -229,6 +229,27 @@ function formatSapDateInput(value) {
     return text;
 }
 
+function formatSapJsonDateInput(value) {
+    const text = String(value || '').trim();
+    if (!text) return '';
+
+    const digits = text.replace(/\D/g, '');
+    if (digits.length !== 8) {
+        return text;
+    }
+
+    const year = Number(digits.slice(0, 4));
+    const month = Number(digits.slice(4, 6)) - 1;
+    const day = Number(digits.slice(6, 8));
+    const utcTime = Date.UTC(year, month, day);
+
+    if (Number.isNaN(utcTime)) {
+        return text;
+    }
+
+    return `/Date(${utcTime})/`;
+}
+
 function formatSapTimeInput(value) {
     const text = String(value || '').trim();
     if (!text) return '';
@@ -238,6 +259,23 @@ function formatSapTimeInput(value) {
     return text;
 }
 
+function formatSapJsonTimeInput(value) {
+    const text = String(value || '').trim();
+    if (!text) {
+        return 'PT00H00M00S';
+    }
+
+    const digits = text.replace(/\D/g, '');
+    if (digits.length !== 6) {
+        return text;
+    }
+
+    const hours = digits.slice(0, 2);
+    const minutes = digits.slice(2, 4);
+    const seconds = digits.slice(4, 6);
+    return `PT${hours}H${minutes}M${seconds}S`;
+}
+
 function getLeaveCreateServiceUrl() {
     if (SAP_LEAVE_CREATE_SERVICE_URL) return SAP_LEAVE_CREATE_SERVICE_URL;
     if (SAP_LEAVE_OVERVIEW_NEW_SERVICE_URL) return SAP_LEAVE_OVERVIEW_NEW_SERVICE_URL;
@@ -245,7 +283,7 @@ function getLeaveCreateServiceUrl() {
 
     const hostMatch = SAP_SERVICE_URL.match(/^(https?:\/\/[^/]+)/i);
     if (!hostMatch) return '';
-    return `${hostMatch[1]}/sap/opu/odata/SAP/ZDATA_KIOSK_LEAVE_OVERVIEW_NEW_SRV`;
+    return `${hostMatch[1]}/sap/opu/odata/SAP/ZDATA_KIOSK_CREATE_LEAVE_REQ_SRV`;
 }
 
 function getDefaultLeaveTypes(pernr) {
@@ -326,6 +364,27 @@ function getSapHeaders() {
     return {
         Accept: 'application/json',
         'sap-client': SAP_CLIENT
+    };
+}
+
+async function getSapCsrfHeaders(serviceUrl, auth) {
+    const response = await axios.get(`${serviceUrl}/`, {
+        params: { '$format': 'json' },
+        auth,
+        headers: {
+            ...getSapHeaders(),
+            'X-CSRF-Token': 'Fetch'
+        },
+        timeout: 15000
+    });
+
+    const csrfToken = response.headers['x-csrf-token'];
+    const setCookie = response.headers['set-cookie'];
+
+    return {
+        ...getSapHeaders(),
+        ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
+        ...(Array.isArray(setCookie) && setCookie.length ? { Cookie: setCookie.map((cookie) => cookie.split(';')[0]).join('; ') } : {})
     };
 }
 
@@ -979,8 +1038,8 @@ app.post('/api/leave-request', async (req, res) => {
     const subtype = String(req.body?.subty || '').trim();
     const begda = formatSapDateInput(req.body?.begda || req.body?.fromDate || '');
     const endda = formatSapDateInput(req.body?.endda || req.body?.toDate || '');
-    const begti = formatSapTimeInput(req.body?.begti || req.body?.beginTime || '');
-    const endti = formatSapTimeInput(req.body?.endti || req.body?.endTime || '');
+    const begti = formatSapTimeInput(req.body?.begti || req.body?.beginTime || '') || '000000';
+    const endti = formatSapTimeInput(req.body?.endti || req.body?.endTime || '') || '000000';
     const note = String(req.body?.note || '').trim();
 
     if (!employeeId || !subtype || !begda || !endda) {
@@ -1017,9 +1076,30 @@ app.post('/api/leave-request', async (req, res) => {
         Note: note
     };
 
+    const payloadCreate = {
+        Pernr: employeeId,
+        Subty: subtype,
+        Begda: formatSapJsonDateInput(begda),
+        Endda: formatSapJsonDateInput(endda),
+        Begti: formatSapJsonTimeInput(begti),
+        Endti: formatSapJsonTimeInput(endti),
+        Note: note
+    };
+
     const attempts = [];
     const auth = getSapAuth();
     const headers = getSapHeaders();
+    let csrfHeaders = headers;
+
+    try {
+        csrfHeaders = await getSapCsrfHeaders(serviceUrl, auth);
+    } catch (error) {
+        attempts.push({
+            attempt: 'Fetch CSRF token',
+            status: error.response?.status || null,
+            message: error.response?.data?.error?.message?.value || error.message
+        });
+    }
 
     const attemptPlans = [
         {
@@ -1048,10 +1128,9 @@ app.post('/api/leave-request', async (req, res) => {
         },
         {
             label: `POST ${SAP_LEAVE_CREATE_ENTITY}`,
-            execute: () => axios.post(`${serviceUrl}/${SAP_LEAVE_CREATE_ENTITY}`, payloadTitle, {
-                params: { '$format': 'json' },
+            execute: () => axios.post(`${serviceUrl}/${SAP_LEAVE_CREATE_ENTITY}`, payloadCreate, {
                 auth,
-                headers,
+                headers: csrfHeaders,
                 timeout: 20000
             })
         }
