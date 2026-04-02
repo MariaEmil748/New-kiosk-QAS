@@ -1035,7 +1035,7 @@ app.get('/api/kiosk3/overview/:id', async (req, res) => {
 
 app.post('/api/leave-request', async (req, res) => {
     const employeeId = normalizeEmployeeInput(req.body?.employeeId || req.body?.pernr || '');
-    const subtype = String(req.body?.subty || '').trim();
+    const subtype = String(req.body?.subty || '').trim().toUpperCase();
     const begda = formatSapDateInput(req.body?.begda || req.body?.fromDate || '');
     const endda = formatSapDateInput(req.body?.endda || req.body?.toDate || '');
     const begti = formatSapTimeInput(req.body?.begti || req.body?.beginTime || '') || '000000';

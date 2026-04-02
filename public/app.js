@@ -258,6 +258,77 @@ function formRow(first, second) {
     `;
 }
 
+function getLeaveTypeOptionsHtml() {
+    const placeholder = currentLanguage === 'ar' ? 'اختر نوع الاجازة' : 'Select leave type';
+    const combined = [
+        ...(Array.isArray(currentLeaveBundle?.leaveTypes) ? currentLeaveBundle.leaveTypes : []),
+        ...(Array.isArray(currentLeaveBundle?.newLeaves) ? currentLeaveBundle.newLeaves : [])
+    ];
+
+    const options = [];
+    const seen = new Set();
+
+    for (const row of combined) {
+        const code = String(row?.Subty || '').trim();
+        if (!code || seen.has(code)) continue;
+        seen.add(code);
+
+        const description = String(row?.Description || row?.SubtypeDescription || code).trim();
+        options.push({ code, description });
+    }
+
+    if (!options.length) {
+        options.push(
+            { code: '0001', description: currentLanguage === 'ar' ? 'اجازة سنوية' : 'Annual leave' },
+            { code: '0002', description: currentLanguage === 'ar' ? 'اجازة أمومة' : 'Maternity leave' },
+            { code: '0003', description: currentLanguage === 'ar' ? 'اجازة حج' : 'Haj leave' },
+            { code: '0004', description: currentLanguage === 'ar' ? 'اجازة عسكرية' : 'Military leave' },
+            { code: '0005', description: currentLanguage === 'ar' ? 'اجازة عزاء' : 'Condolences leave' },
+            { code: '0006', description: currentLanguage === 'ar' ? 'اجازة زواج' : 'Marriage leave' },
+            { code: '0007', description: currentLanguage === 'ar' ? 'اجازة بدون مرتب' : 'Unpaid leave' }
+        );
+    }
+
+    const optionLines = options
+        .sort((a, b) => a.code.localeCompare(b.code))
+        .map((item) => `<option value="${escapeHtml(item.code)}">${escapeHtml(`${item.description} (${item.code})`)}</option>`)
+        .join('');
+
+    return `<option value="">${escapeHtml(placeholder)}</option>${optionLines}`;
+}
+
+function getLeaveTypeRecord(subtype) {
+    const code = String(subtype || '').trim().toUpperCase();
+    if (!code) return null;
+
+    const combined = [
+        ...(Array.isArray(currentLeaveBundle?.leaveTypes) ? currentLeaveBundle.leaveTypes : []),
+        ...(Array.isArray(currentLeaveBundle?.newLeaves) ? currentLeaveBundle.newLeaves : [])
+    ];
+
+    return combined.find((row) => String(row?.Subty || '').trim().toUpperCase() === code) || null;
+}
+
+function isEventLeaveType(subtype) {
+    return String(getLeaveTypeRecord(subtype)?.Type || '').trim().toLowerCase() === 'event';
+}
+
+function updateLeaveTypeHelp(subtype) {
+    const helper = document.getElementById('leave-type-helper');
+    if (!helper) return;
+
+    if (isEventLeaveType(subtype)) {
+        helper.textContent = currentLanguage === 'ar'
+            ? 'هذا النوع يحتاج وقت من وإلى.'
+            : 'This type needs from/to time.';
+        return;
+    }
+
+    helper.textContent = currentLanguage === 'ar'
+        ? 'يمكن ترك الوقت الافتراضي.'
+        : 'Time can stay at the default value.';
+}
+
 function renderActionForm(actionKey) {
     const submitText = currentLanguage === 'ar' ? 'إرسال الطلب' : 'Submit request';
     const showReportText = currentLanguage === 'ar' ? 'عرض التقرير' : 'Show report';
@@ -281,24 +352,28 @@ function renderActionForm(actionKey) {
             `;
         case 'leave-request':
             return `
-                ${formField(currentLanguage === 'ar' ? 'نوع الاجازة' : 'Leave type', `
-                    <select class="form-select" id="f-type">
-                        <option value="">${currentLanguage === 'ar' ? 'اختر نوع الاجازة' : 'Select leave type'}</option>
-                        <option value="0001">${currentLanguage === 'ar' ? 'اجازة سنوية' : 'Annual leave'}</option>
-                        <option value="0002">${currentLanguage === 'ar' ? 'اجازة أمومة' : 'Maternity leave'}</option>
-                        <option value="0003">${currentLanguage === 'ar' ? 'اجازة حج' : 'Haj leave'}</option>
-                        <option value="0004">${currentLanguage === 'ar' ? 'اجازة عسكرية' : 'Military leave'}</option>
-                        <option value="0005">${currentLanguage === 'ar' ? 'اجازة عزاء' : 'Condolences leave'}</option>
-                        <option value="0006">${currentLanguage === 'ar' ? 'اجازة زواج' : 'Marriage leave'}</option>
-                        <option value="0007">${currentLanguage === 'ar' ? 'اجازة بدون مرتب' : 'Unpaid leave'}</option>
-                    </select>
-                `)}
-                <div class="form-row">
-                    ${formField(currentLanguage === 'ar' ? 'من تاريخ' : 'From date', '<input type="date" class="form-input" id="f-from" />')}
-                    ${formField(currentLanguage === 'ar' ? 'إلى تاريخ' : 'To date', '<input type="date" class="form-input" id="f-to" />')}
+                <div class="leave-request-form">
+                    ${formField(currentLanguage === 'ar' ? 'نوع الاجازة' : 'Leave type', `
+                        <select class="form-select" id="f-type" onchange="updateLeaveTypeHelp(this.value)">
+                            ${getLeaveTypeOptionsHtml()}
+                        </select>
+                    `)}
+                    <div class="form-row form-row-spacious">
+                        ${formField(currentLanguage === 'ar' ? 'من تاريخ' : 'From date', '<input type="date" class="form-input" id="f-from" />')}
+                        ${formField(currentLanguage === 'ar' ? 'إلى تاريخ' : 'To date', '<input type="date" class="form-input" id="f-to" />')}
+                    </div>
+                    <div class="form-row form-row-spacious">
+                        ${formField(currentLanguage === 'ar' ? 'من وقت' : 'From time', '<input type="time" class="form-input" id="f-begti" />')}
+                        ${formField(currentLanguage === 'ar' ? 'إلى وقت' : 'To time', '<input type="time" class="form-input" id="f-endti" />')}
+                    </div>
+                    <div class="form-helper" id="leave-type-helper">
+                        ${currentLanguage === 'ar'
+                            ? 'للإجازات من نوع حدث، أدخل الوقت من وإلى.'
+                            : 'For event leave, enter from/to time.'}
+                    </div>
+                    ${formField(currentLanguage === 'ar' ? 'ملاحظات' : 'Notes', `<textarea class="form-textarea form-textarea-large" id="f-notes" placeholder="${currentLanguage === 'ar' ? 'أي ملاحظات إضافية...' : 'Any additional notes...'}"></textarea>`)}
+                    <button class="submit-btn" onclick="submitAction('${actionKey}')">${submitText}</button>
                 </div>
-                ${formField(currentLanguage === 'ar' ? 'ملاحظات' : 'Notes', `<textarea class="form-textarea" id="f-notes" placeholder="${currentLanguage === 'ar' ? 'أي ملاحظات إضافية...' : 'Any additional notes...'}"></textarea>`)}
-                <button class="submit-btn" onclick="submitAction('${actionKey}')">${submitText}</button>
             `;
         case 'work-from-home':
             return `
@@ -726,6 +801,10 @@ function handleAction(actionKey) {
         document.querySelectorAll('.form-input[type="date"]').forEach(el => {
             if (!el.value) el.value = today;
         });
+
+        if (actionKey === 'leave-request') {
+            updateLeaveTypeHelp(document.getElementById('f-type')?.value || '');
+        }
     }
 
     document.getElementById('modal-overlay').classList.remove('hidden');
@@ -755,6 +834,8 @@ async function submitLeaveRequest() {
     const subty = document.getElementById('f-type')?.value?.trim();
     const fromDate = document.getElementById('f-from')?.value?.trim();
     const toDate = document.getElementById('f-to')?.value?.trim();
+    const begti = document.getElementById('f-begti')?.value?.trim() || '';
+    const endti = document.getElementById('f-endti')?.value?.trim() || '';
     const note = document.getElementById('f-notes')?.value?.trim() || '';
     const employeeId = String(currentEmployee?.hrCode || '').trim();
 
@@ -776,6 +857,8 @@ async function submitLeaveRequest() {
                 subty,
                 begda: fromDate,
                 endda: toDate,
+                begti,
+                endti,
                 note
             })
         });
