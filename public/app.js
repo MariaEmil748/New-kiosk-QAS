@@ -674,9 +674,7 @@ function renderLeaveHistory(records, bundle = currentLeaveBundle) {
         ? [
             renderGenericLeaveSection(t('leaveAbsenceQuotaTitle'), bundle.absenceQuota),
             renderGenericLeaveSection(t('leaveHolidaysTitle'), bundle.holidays),
-            renderGenericLeaveSection(t('leaveTypesTitle'), bundle.leaveTypes),
-            renderGenericLeaveSection(t('leaveLeavesTitle'), bundle.leaves),
-            renderGenericLeaveSection(t('leaveNewLeavesTitle'), bundle.newLeaves)
+            renderGenericLeaveSection(t('leaveTypesTitle'), bundle.leaveTypes)
         ].join('')
         : '';
 
