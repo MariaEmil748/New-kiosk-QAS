@@ -126,6 +126,7 @@ const translations = {
         leaveSubmitFailed: 'تعذر إرسال طلب الإجازة.',
         leaveRequiredFields: 'يرجى اختيار نوع الإجازة وإدخال التاريخ من وإلى.',
         sectionTitle: 'الخدمات المتاحة',
+        futureSectionTitle: 'الخدمات القادمة',
         unavailable: 'غير متوفر',
         noPhotoInSap: 'لا توجد صورة في SAP',
         employeeNotFound: 'الرقم الوظيفي غير موجود.',
@@ -138,7 +139,13 @@ const translations = {
         actions: {
             'late-permission': 'اذن تأخير',
             'early-leave': 'اذن انصراف',
-            'leave-request': 'طلب اجازة',
+            'leave-request': 'طلبات',
+            'leave-annual': 'إجازة سنوية',
+            'leave-excuse-in': 'إذن دخول',
+            'leave-excuse-out': 'إذن خروج',
+            'leave-mission-in': 'مأمورية دخول',
+            'leave-mission-out': 'مأمورية خروج',
+            'leave-mission': 'مأمورية',
             'work-from-home': 'طلب عمل من المنزل',
             'review-report': 'تقرير مراجعة الطلبات',
             'mission-checkout': 'تسجيل خروج مأمورية',
@@ -192,6 +199,7 @@ const translations = {
         leaveSubmitFailed: 'Unable to submit leave request.',
         leaveRequiredFields: 'Please select leave type and both from/to dates.',
         sectionTitle: 'Available services',
+        futureSectionTitle: 'Coming Soon',
         unavailable: 'Not available',
         noPhotoInSap: 'No photo in SAP',
         employeeNotFound: 'Employee ID was not found.',
@@ -205,6 +213,12 @@ const translations = {
             'late-permission': 'Late permission',
             'early-leave': 'Early leave',
             'leave-request': 'Leave request',
+            'leave-annual': 'Annual',
+            'leave-excuse-in': 'Excuse In',
+            'leave-excuse-out': 'Excuse Out',
+            'leave-mission-in': 'Mission In',
+            'leave-mission-out': 'Mission Out',
+            'leave-mission': 'Mission',
             'work-from-home': 'Work from home',
             'review-report': 'Request review report',
             'mission-checkout': 'Mission checkout',
@@ -223,6 +237,12 @@ const actions = {
     'late-permission': true,
     'early-leave': true,
     'leave-request': true,
+    'leave-annual': true,
+    'leave-excuse-in': true,
+    'leave-excuse-out': true,
+    'leave-mission-in': true,
+    'leave-mission-out': true,
+    'leave-mission': true,
     'work-from-home': true,
     'review-report': true,
     'mission-checkout': true,
@@ -231,6 +251,55 @@ const actions = {
     'contract-renewal': true,
     'received-items': true
 };
+
+const LEAVE_ACTION_CONFIG = {
+    'leave-request': {
+        fixedSubtype: '',
+        requiresTime: true,
+        singleDay: false,
+        timeMode: 'both'
+    },
+    'leave-annual': {
+        fixedSubtype: '0001',
+        requiresTime: false,
+        singleDay: false,
+        timeMode: 'none'
+    },
+    'leave-excuse-in': {
+        fixedSubtype: 'EXIN',
+        requiresTime: true,
+        singleDay: true,
+        timeMode: 'start'
+    },
+    'leave-excuse-out': {
+        fixedSubtype: 'EXOT',
+        requiresTime: true,
+        singleDay: true,
+        timeMode: 'end'
+    },
+    'leave-mission-in': {
+        fixedSubtype: 'MISN',
+        requiresTime: true,
+        singleDay: true,
+        timeMode: 'both'
+    },
+    'leave-mission-out': {
+        fixedSubtype: 'MISN',
+        requiresTime: true,
+        singleDay: true,
+        timeMode: 'both'
+    },
+    'leave-mission': {
+        fixedSubtype: 'MISN',
+        requiresTime: true,
+        singleDay: false,
+        timeMode: 'both'
+    }
+};
+
+function getLeaveActionConfig(actionKey) {
+    return LEAVE_ACTION_CONFIG[actionKey] || LEAVE_ACTION_CONFIG['leave-request'];
+}
 
 function t(key) {
     return translations[currentLanguage][key];
@@ -313,6 +382,96 @@ function isEventLeaveType(subtype) {
     return String(getLeaveTypeRecord(subtype)?.Type || '').trim().toLowerCase() === 'event';
 }
 
+function isLeaveRequestAction(actionKey) {
+    return [
+        'leave-request',
+        'leave-annual',
+        'leave-excuse-in',
+        'leave-excuse-out',
+        'leave-mission-in',
+        'leave-mission-out',
+        'leave-mission'
+    ].includes(actionKey);
+}
+
+function isFixedLeaveSubtypeAction(actionKey) {
+    return [
+        'leave-annual',
+        'leave-excuse-in',
+        'leave-excuse-out',
+        'leave-mission-in',
+        'leave-mission-out',
+        'leave-mission'
+    ].includes(actionKey);
+}
+
+function calculateLeaveDeduction(fromDate, toDate, begti = '', endti = '') {
+    const start = new Date(`${String(fromDate || '').trim()}T00:00:00`);
+    const end = new Date(`${String(toDate || '').trim()}T00:00:00`);
+
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+        return '';
+    }
+
+    const dayDiff = Math.max(0, Math.round((end.getTime() - start.getTime()) / 86400000)) + 1;
+    const hasTimeWindow = String(fromDate || '').trim() === String(toDate || '').trim() && begti && endti;
+
+    if (hasTimeWindow) {
+        const startDigits = String(begti).replace(/\D/g, '').padEnd(6, '0').slice(0, 6);
+        const endDigits = String(endti).replace(/\D/g, '').padEnd(6, '0').slice(0, 6);
+        const startMinutes = (Number(startDigits.slice(0, 2)) * 60) + Number(startDigits.slice(2, 4));
+        const endMinutes = (Number(endDigits.slice(0, 2)) * 60) + Number(endDigits.slice(2, 4));
+        const minutes = Math.max(0, endMinutes - startMinutes);
+
+        if (minutes > 0) {
+            return (minutes / (24 * 60)).toFixed(2);
+        }
+    }
+
+    return Number(dayDiff).toFixed(2);
+}
+
+function autoSelectLeaveSubtype(actionKey) {
+    const typeSelect = document.getElementById('f-type');
+    if (!typeSelect) return;
+
+    const keywordMap = {
+        'leave-annual': ['annual', 'سنوي', 'سنوية'],
+        'leave-excuse-in': ['excuse in', 'اذن دخول', 'دخول'],
+        'leave-excuse-out': ['excuse out', 'اذن خروج', 'انصراف', 'خروج'],
+        'leave-mission-in': ['mission in', 'مأمورية دخول', 'بداية مأمورية'],
+        'leave-mission-out': ['mission out', 'مأمورية خروج', 'نهاية مأمورية', 'عودة من مأمورية'],
+        'leave-mission': ['mission', 'مأمورية']
+    };
+
+    const keywords = keywordMap[actionKey];
+    if (!keywords || !keywords.length) {
+        updateLeaveTypeHelp(typeSelect.value || '');
+        return;
+    }
+
+    const options = Array.from(typeSelect.options || []);
+    const loweredKeywords = keywords.map((entry) => String(entry).toLowerCase());
+    const matched = options.find((option) => {
+        const text = String(option.textContent || option.innerText || '').toLowerCase();
+        return loweredKeywords.some((keyword) => text.includes(keyword));
+    });
+
+    if (matched) {
+        typeSelect.value = matched.value;
+    }
+
+    updateLeaveTypeHelp(typeSelect.value || '');
+}
+
+function lockLeaveSubtypeSelection(actionKey) {
+    const typeSelect = document.getElementById('f-type');
+    if (!typeSelect) return;
+
+    const shouldLock = isFixedLeaveSubtypeAction(actionKey);
+    typeSelect.disabled = shouldLock;
+}
+
 function updateLeaveTypeHelp(subtype) {
     const helper = document.getElementById('leave-type-helper');
     if (!helper) return;
@@ -329,6 +488,68 @@ function updateLeaveTypeHelp(subtype) {
         : 'Time can stay at the default value.';
 }
 
+function renderLeaveRequestForm(actionKey, submitText) {
+    const leaveConfig = getLeaveActionConfig(actionKey);
+    const isFixedSubtype = Boolean(leaveConfig.fixedSubtype);
+
+    const leaveTypeControl = isFixedSubtype
+        ? `
+            <input type="text" class="form-input" value="${escapeHtml(actionLabel(actionKey))}" readonly />
+            <input type="hidden" id="f-type" value="${escapeHtml(leaveConfig.fixedSubtype)}" />
+        `
+        : `
+            <select class="form-select" id="f-type" onchange="updateLeaveTypeHelp(this.value)">
+                ${getLeaveTypeOptionsHtml()}
+            </select>
+        `;
+
+    const dateFieldsHtml = leaveConfig.singleDay
+        ? `${formField(currentLanguage === 'ar' ? 'التاريخ' : 'Date', '<input type="date" class="form-input" id="f-from" />')}<input type="hidden" id="f-to" />`
+        : `
+            <div class="form-row form-row-spacious">
+                ${formField(currentLanguage === 'ar' ? 'من تاريخ' : 'From date', '<input type="date" class="form-input" id="f-from" />')}
+                ${formField(currentLanguage === 'ar' ? 'إلى تاريخ' : 'To date', '<input type="date" class="form-input" id="f-to" />')}
+            </div>
+        `;
+
+    const timeMode = leaveConfig.timeMode || (leaveConfig.requiresTime ? 'both' : 'none');
+    const timeFieldsHtml = !leaveConfig.requiresTime
+        ? ''
+        : (timeMode === 'start'
+            ? `
+                ${formField(currentLanguage === 'ar' ? 'وقت الدخول' : 'Entry time', '<input type="time" class="form-input" id="f-begti" />')}
+                <input type="hidden" id="f-endti" value="" />
+                <div class="form-helper" id="leave-type-helper">${currentLanguage === 'ar' ? 'يرجى إدخال وقت الدخول.' : 'Please enter entry time.'}</div>
+            `
+            : (timeMode === 'end'
+                ? `
+                    ${formField(currentLanguage === 'ar' ? 'وقت الخروج' : 'Exit time', '<input type="time" class="form-input" id="f-endti" />')}
+                    <input type="hidden" id="f-begti" value="" />
+                    <div class="form-helper" id="leave-type-helper">${currentLanguage === 'ar' ? 'يرجى إدخال وقت الخروج.' : 'Please enter exit time.'}</div>
+                `
+                : `
+                    <div class="form-row form-row-spacious">
+                        ${formField(currentLanguage === 'ar' ? 'من وقت' : 'From time', '<input type="time" class="form-input" id="f-begti" />')}
+                        ${formField(currentLanguage === 'ar' ? 'إلى وقت' : 'To time', '<input type="time" class="form-input" id="f-endti" />')}
+                    </div>
+                    <div class="form-helper" id="leave-type-helper">
+                        ${currentLanguage === 'ar'
+                            ? 'يرجى إدخال الوقت من وإلى لهذا النوع.'
+                            : 'Please enter from/to time for this type.'}
+                    </div>
+                `));
+
+    return `
+        <div class="leave-request-form">
+            ${formField(currentLanguage === 'ar' ? 'نوع الاجازة' : 'Leave type', leaveTypeControl)}
+            ${dateFieldsHtml}
+            ${timeFieldsHtml}
+            ${formField(currentLanguage === 'ar' ? 'ملاحظات' : 'Notes', `<textarea class="form-textarea form-textarea-large" id="f-notes" placeholder="${currentLanguage === 'ar' ? 'أي ملاحظات إضافية...' : 'Any additional notes...'}"></textarea>`)}
+            <button class="submit-btn" onclick="submitAction('${actionKey}')">${submitText}</button>
+        </div>
+    `;
+}
+
 function renderActionForm(actionKey) {
     const submitText = currentLanguage === 'ar' ? 'إرسال الطلب' : 'Submit request';
     const showReportText = currentLanguage === 'ar' ? 'عرض التقرير' : 'Show report';
@@ -343,38 +564,14 @@ function renderActionForm(actionKey) {
                 ${formField(currentLanguage === 'ar' ? 'سبب التأخير' : 'Reason for delay', `<textarea class="form-textarea" id="f-reason" placeholder="${currentLanguage === 'ar' ? 'اكتب سبب التأخير...' : 'Write the reason for delay...'}"></textarea>`)}
                 <button class="submit-btn" onclick="submitAction('${actionKey}')">${submitText}</button>
             `;
-        case 'early-leave':
-            return `
-                ${formField(currentLanguage === 'ar' ? 'تاريخ الانصراف' : 'Leave date', '<input type="date" class="form-input" id="f-date" />')}
-                ${formField(currentLanguage === 'ar' ? 'وقت الانصراف المطلوب' : 'Requested leave time', '<input type="time" class="form-input" id="f-time" />')}
-                ${formField(currentLanguage === 'ar' ? 'سبب الانصراف المبكر' : 'Reason for early leave', `<textarea class="form-textarea" id="f-reason" placeholder="${currentLanguage === 'ar' ? 'اكتب سبب الانصراف...' : 'Write the reason for early leave...'}"></textarea>`)}
-                <button class="submit-btn" onclick="submitAction('${actionKey}')">${submitText}</button>
-            `;
         case 'leave-request':
-            return `
-                <div class="leave-request-form">
-                    ${formField(currentLanguage === 'ar' ? 'نوع الاجازة' : 'Leave type', `
-                        <select class="form-select" id="f-type" onchange="updateLeaveTypeHelp(this.value)">
-                            ${getLeaveTypeOptionsHtml()}
-                        </select>
-                    `)}
-                    <div class="form-row form-row-spacious">
-                        ${formField(currentLanguage === 'ar' ? 'من تاريخ' : 'From date', '<input type="date" class="form-input" id="f-from" />')}
-                        ${formField(currentLanguage === 'ar' ? 'إلى تاريخ' : 'To date', '<input type="date" class="form-input" id="f-to" />')}
-                    </div>
-                    <div class="form-row form-row-spacious">
-                        ${formField(currentLanguage === 'ar' ? 'من وقت' : 'From time', '<input type="time" class="form-input" id="f-begti" />')}
-                        ${formField(currentLanguage === 'ar' ? 'إلى وقت' : 'To time', '<input type="time" class="form-input" id="f-endti" />')}
-                    </div>
-                    <div class="form-helper" id="leave-type-helper">
-                        ${currentLanguage === 'ar'
-                            ? 'للإجازات من نوع حدث، أدخل الوقت من وإلى.'
-                            : 'For event leave, enter from/to time.'}
-                    </div>
-                    ${formField(currentLanguage === 'ar' ? 'ملاحظات' : 'Notes', `<textarea class="form-textarea form-textarea-large" id="f-notes" placeholder="${currentLanguage === 'ar' ? 'أي ملاحظات إضافية...' : 'Any additional notes...'}"></textarea>`)}
-                    <button class="submit-btn" onclick="submitAction('${actionKey}')">${submitText}</button>
-                </div>
-            `;
+        case 'leave-annual':
+        case 'leave-excuse-in':
+        case 'leave-excuse-out':
+        case 'leave-mission-in':
+        case 'leave-mission-out':
+        case 'leave-mission':
+            return renderLeaveRequestForm(actionKey, submitText);
         case 'work-from-home':
             return `
                 <div class="form-row">
@@ -470,6 +667,10 @@ function applyTranslations() {
     document.getElementById('label-approver').textContent = dictionary.labelApprover;
     document.getElementById('leave-history-title').textContent = dictionary.leaveHistoryTitle;
     document.getElementById('section-title').textContent = dictionary.sectionTitle;
+    const futureSectionTitle = document.getElementById('future-section-title');
+    if (futureSectionTitle) {
+        futureSectionTitle.textContent = dictionary.futureSectionTitle;
+    }
 
     Object.keys(dictionary.actions).forEach((actionKey) => {
         const target = document.getElementById(`action-${actionKey}`);
@@ -645,9 +846,6 @@ function renderLeaveHistory(records, bundle = currentLeaveBundle) {
                 <thead>
                     <tr>
                         <th>${t('leaveHdrType')}</th>
-                        <th>${t('leaveHdrTotal')}</th>
-                        <th>${t('leaveHdrUsed')}</th>
-                        <th>${t('leaveHdrRemaining')}</th>
                         <th>${t('leaveHdrStatus')}</th>
                         <th>${t('leaveHdrFrom')}</th>
                         <th>${t('leaveHdrTo')}</th>
@@ -657,9 +855,6 @@ function renderLeaveHistory(records, bundle = currentLeaveBundle) {
                     ${safeRecords.map((record) => `
                         <tr>
                             <td>${escapeHtml(record.leaveType || '-')}</td>
-                            <td>${escapeHtml(record.totalDays ?? 0)}</td>
-                            <td>${escapeHtml(record.usedDays ?? 0)}</td>
-                            <td>${escapeHtml(record.remainingDays ?? 0)}</td>
                             <td>${escapeHtml(record.status || '-')}</td>
                             <td>${escapeHtml(record.fromDate || '-')}</td>
                             <td>${escapeHtml(record.toDate || '-')}</td>
@@ -670,13 +865,7 @@ function renderLeaveHistory(records, bundle = currentLeaveBundle) {
         `
         : `${overviewTitleHtml}<div class="leave-history-message">${t('leaveNoData')}</div>`;
 
-    const extraSections = bundle
-        ? [
-            renderGenericLeaveSection(t('leaveAbsenceQuotaTitle'), bundle.absenceQuota),
-            renderGenericLeaveSection(t('leaveHolidaysTitle'), bundle.holidays),
-            renderGenericLeaveSection(t('leaveTypesTitle'), bundle.leaveTypes)
-        ].join('')
-        : '';
+    const extraSections = '';
 
     content.innerHTML = `
         <div class="leave-summary-row">
@@ -800,8 +989,9 @@ function handleAction(actionKey) {
             if (!el.value) el.value = today;
         });
 
-        if (actionKey === 'leave-request') {
-            updateLeaveTypeHelp(document.getElementById('f-type')?.value || '');
+        if (isLeaveRequestAction(actionKey)) {
+            autoSelectLeaveSubtype(actionKey);
+            lockLeaveSubtypeSelection(actionKey);
         }
     }
 
@@ -812,8 +1002,8 @@ function handleAction(actionKey) {
 // SUBMIT ACTION
 // ============================================
 async function submitAction(actionName) {
-    if (actionName === 'leave-request') {
-        await submitLeaveRequest();
+    if (isLeaveRequestAction(actionName)) {
+        await submitLeaveRequest(actionName);
         return;
     }
 
@@ -828,16 +1018,31 @@ async function submitAction(actionName) {
     setTimeout(() => closeModal(), 2500);
 }
 
-async function submitLeaveRequest() {
-    const subty = document.getElementById('f-type')?.value?.trim();
+async function submitLeaveRequest(actionName = 'leave-request') {
+    const leaveConfig = getLeaveActionConfig(actionName);
+    const timeMode = leaveConfig.timeMode || (leaveConfig.requiresTime ? 'both' : 'none');
+    const selectedSubtype = document.getElementById('f-type')?.value?.trim();
+    const subty = (leaveConfig.fixedSubtype || selectedSubtype || '').trim();
     const fromDate = document.getElementById('f-from')?.value?.trim();
-    const toDate = document.getElementById('f-to')?.value?.trim();
-    const begti = document.getElementById('f-begti')?.value?.trim() || '';
-    const endti = document.getElementById('f-endti')?.value?.trim() || '';
+    const explicitToDate = document.getElementById('f-to')?.value?.trim();
+    const toDate = leaveConfig.singleDay ? fromDate : explicitToDate;
+    const begtiInput = document.getElementById('f-begti')?.value?.trim() || '';
+    const endtiInput = document.getElementById('f-endti')?.value?.trim() || '';
+    const begti = leaveConfig.requiresTime ? begtiInput : '';
+    const endti = leaveConfig.requiresTime ? endtiInput : '';
     const note = document.getElementById('f-notes')?.value?.trim() || '';
     const employeeId = String(currentEmployee?.hrCode || '').trim();
+    const employeeName = String(currentEmployee?.name || '').trim();
+    const approver = String(currentEmployee?.approver || '').trim();
+    const normalizedBegti = timeMode === 'end' ? (endti || begti) : begti;
+    const normalizedEndti = timeMode === 'start' ? (begti || endti) : endti;
+    const requestedDays = calculateLeaveDeduction(fromDate, toDate, normalizedBegti, normalizedEndti);
+    const hasRequiredTime = !leaveConfig.requiresTime
+        || (timeMode === 'start' && Boolean(normalizedBegti))
+        || (timeMode === 'end' && Boolean(normalizedEndti))
+        || (timeMode === 'both' && Boolean(normalizedBegti && normalizedEndti));
 
-    if (!employeeId || !subty || !fromDate || !toDate) {
+    if (!employeeId || !subty || !fromDate || !toDate || !hasRequiredTime) {
         showError(t('leaveRequiredFields'));
         return;
     }
@@ -855,9 +1060,13 @@ async function submitLeaveRequest() {
                 subty,
                 begda: fromDate,
                 endda: toDate,
-                begti,
-                endti,
-                note
+                begti: normalizedBegti,
+                endti: normalizedEndti,
+                note,
+                deduction: requestedDays,
+                employeeName,
+                approver,
+                leaveAction: actionName
             })
         });
 
@@ -872,7 +1081,7 @@ async function submitLeaveRequest() {
             <div class="success-msg">
                 <div class="success-icon">✅</div>
                 <h4>${t('successTitle')}</h4>
-                <p>${t('successMessageStart')}${actionLabel('leave-request')}${t('successMessageEnd')}</p>
+                <p>${t('successMessageStart')}${actionLabel(actionName)}${t('successMessageEnd')}</p>
                 ${deduction}
             </div>
         `;

@@ -1041,6 +1041,10 @@ app.post('/api/leave-request', async (req, res) => {
     const begti = formatSapTimeInput(req.body?.begti || req.body?.beginTime || '') || '000000';
     const endti = formatSapTimeInput(req.body?.endti || req.body?.endTime || '') || '000000';
     const note = String(req.body?.note || '').trim();
+    const deduction = String(req.body?.deduction || req.body?.Deduction || '').trim();
+    const employeeName = String(req.body?.employeeName || req.body?.employee || '').trim();
+    const approver = String(req.body?.approver || req.body?.manager || '').trim();
+    const leaveAction = String(req.body?.leaveAction || '').trim();
 
     if (!employeeId || !subtype || !begda || !endda) {
         return res.status(400).json({
@@ -1063,7 +1067,11 @@ app.post('/api/leave-request', async (req, res) => {
         ENDDA: endda,
         BEGTI: begti,
         ENDTI: endti,
-        NOTE: note
+        NOTE: note,
+        DEDUCTION: deduction,
+        EMPLOYEE_NAME: employeeName,
+        APPROVER: approver,
+        ACTION: leaveAction
     };
 
     const payloadTitle = {
@@ -1073,7 +1081,11 @@ app.post('/api/leave-request', async (req, res) => {
         Endda: endda,
         Begti: begti,
         Endti: endti,
-        Note: note
+        Note: note,
+        Deduction: deduction,
+        EmployeeName: employeeName,
+        Approver: approver,
+        Action: leaveAction
     };
 
     const payloadCreate = {
@@ -1083,7 +1095,11 @@ app.post('/api/leave-request', async (req, res) => {
         Endda: formatSapJsonDateInput(endda),
         Begti: formatSapJsonTimeInput(begti),
         Endti: formatSapJsonTimeInput(endti),
-        Note: note
+        Note: note,
+        Deduction: deduction,
+        EmployeeName: employeeName,
+        Approver: approver,
+        Action: leaveAction
     };
 
     const attempts = [];
@@ -1102,6 +1118,30 @@ app.post('/api/leave-request', async (req, res) => {
     }
 
     const attemptPlans = [
+        {
+            label: `POST ${SAP_LEAVE_CREATE_ENTITY} (title-case)`,
+            execute: () => axios.post(`${serviceUrl}/${SAP_LEAVE_CREATE_ENTITY}`, payloadTitle, {
+                auth,
+                headers: csrfHeaders,
+                timeout: 20000
+            })
+        },
+        {
+            label: `POST ${SAP_LEAVE_CREATE_ENTITY} (upper-case)`,
+            execute: () => axios.post(`${serviceUrl}/${SAP_LEAVE_CREATE_ENTITY}`, payloadUpper, {
+                auth,
+                headers: csrfHeaders,
+                timeout: 20000
+            })
+        },
+        {
+            label: `POST ${SAP_LEAVE_CREATE_ENTITY}`,
+            execute: () => axios.post(`${serviceUrl}/${SAP_LEAVE_CREATE_ENTITY}`, payloadCreate, {
+                auth,
+                headers: csrfHeaders,
+                timeout: 20000
+            })
+        },
         {
             label: `GET ${SAP_LEAVE_CREATE_FUNCTION}`,
             execute: () => axios.get(`${serviceUrl}/${SAP_LEAVE_CREATE_FUNCTION}`, {
@@ -1123,14 +1163,6 @@ app.post('/api/leave-request', async (req, res) => {
                 },
                 auth,
                 headers,
-                timeout: 20000
-            })
-        },
-        {
-            label: `POST ${SAP_LEAVE_CREATE_ENTITY}`,
-            execute: () => axios.post(`${serviceUrl}/${SAP_LEAVE_CREATE_ENTITY}`, payloadCreate, {
-                auth,
-                headers: csrfHeaders,
                 timeout: 20000
             })
         }
@@ -1162,7 +1194,7 @@ app.post('/api/leave-request', async (req, res) => {
 
     return res.status(502).json({
         error: 'SAP leave request endpoint is not exposed or rejected the request.',
-        hint: 'Publish a FunctionImport for YSP_CREATE_LEAVE_REQUEST or a creatable LeaveRequest entity in OData service.',
+        hint: `Publish a FunctionImport for ${SAP_LEAVE_CREATE_FUNCTION} or a creatable ${SAP_LEAVE_CREATE_ENTITY} entity in OData service.`,
         attempts
     });
 });

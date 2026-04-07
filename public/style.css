@@ -639,6 +639,26 @@ body {
 .success-msg h4 { font-size: 1.1rem; font-weight: 800; margin-bottom: 8px; color: var(--green); }
 .success-msg p { font-size: 14px; color: var(--text-muted); line-height: 1.6; }
 
+.error-msg {
+    background: rgba(220,38,38,0.08);
+    border: 1.5px solid rgba(220,38,38,0.25);
+    border-radius: var(--radius-sm);
+    padding: 14px 16px;
+}
+
+.error-msg h4 {
+    font-size: 1rem;
+    font-weight: 800;
+    margin-bottom: 8px;
+    color: var(--red);
+}
+
+.error-msg-text {
+    font-size: 13px;
+    color: #7f1d1d;
+    line-height: 1.7;
+}
+
 /* Received Items List */
 .items-list {
     max-height: 380px;

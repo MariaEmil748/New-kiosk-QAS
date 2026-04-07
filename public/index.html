@@ -134,27 +134,34 @@
 
         <!-- Actions -->
         <div class="section-title" id="section-title">الخدمات المتاحة</div>
-        <div class="actions-grid">
+        <div class="actions-grid" id="available-actions-grid">
 
-            <button class="action-card" onclick="handleAction('late-permission')">
-                <div class="action-icon icon-blue">
-                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-                </div>
-                <span class="action-label" id="action-late-permission">اذن تأخير</span>
-            </button>
-
-            <button class="action-card" onclick="handleAction('early-leave')">
-                <div class="action-icon icon-orange">
-                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 3h6v6M14 10l6.1-6.1M9 21H3v-6M10 14l-6.1 6.1"/></svg>
-                </div>
-                <span class="action-label" id="action-early-leave">اذن انصراف</span>
-            </button>
-
-            <button class="action-card" onclick="handleAction('leave-request')">
+            <button class="action-card" onclick="handleAction('leave-annual')">
                 <div class="action-icon icon-green">
                     <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                 </div>
-                <span class="action-label" id="action-leave-request">طلب اجازة</span>
+                <span class="action-label" id="action-leave-annual">إجازة سنوية</span>
+            </button>
+
+            <button class="action-card" onclick="handleAction('leave-excuse-in')">
+                <div class="action-icon icon-blue">
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>
+                </div>
+                <span class="action-label" id="action-leave-excuse-in">إذن دخول</span>
+            </button>
+
+            <button class="action-card" onclick="handleAction('leave-excuse-out')">
+                <div class="action-icon icon-orange">
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg>
+                </div>
+                <span class="action-label" id="action-leave-excuse-out">إذن خروج</span>
+            </button>
+
+            <button class="action-card" onclick="handleAction('leave-mission')">
+                <div class="action-icon icon-cyan">
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v20"/><path d="M2 12h20"/><circle cx="12" cy="12" r="4"/></svg>
+                </div>
+                <span class="action-label" id="action-leave-mission">مأمورية</span>
             </button>
 
             <button class="action-card" onclick="handleAction('work-from-home')">
@@ -164,49 +171,8 @@
                 <span class="action-label" id="action-work-from-home">طلب عمل من المنزل</span>
             </button>
 
-            <button class="action-card" onclick="handleAction('review-report')">
-                <div class="action-icon icon-teal">
-                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                </div>
-                <span class="action-label" id="action-review-report">تقرير مراجعة الطلبات</span>
-            </button>
-
-            <button class="action-card" onclick="handleAction('mission-checkout')">
-                <div class="action-icon icon-red">
-                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><polyline points="12 8 12 12 14 14"/></svg>
-                </div>
-                <span class="action-label" id="action-mission-checkout">تسجيل خروج مأمورية</span>
-            </button>
-
-            <button class="action-card" onclick="handleAction('full-day-mission')">
-                <div class="action-icon icon-gold">
-                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 2.18h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 9.91a16 16 0 0 0 6 6l1.09-1.09a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7a2 2 0 0 1 1.72 2.02z"/></svg>
-                </div>
-                <span class="action-label" id="action-full-day-mission">مأمورية يوم كامل</span>
-            </button>
-
-            <button class="action-card" onclick="handleAction('mission-return')">
-                <div class="action-icon icon-cyan">
-                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-                </div>
-                <span class="action-label" id="action-mission-return">تسجيل عودة من مأمورية</span>
-            </button>
-
-            <button class="action-card" onclick="handleAction('contract-renewal')">
-                <div class="action-icon icon-indigo">
-                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15h6M9 11h6"/></svg>
-                </div>
-                <span class="action-label" id="action-contract-renewal">تجديد عقد</span>
-            </button>
-
-            <button class="action-card" onclick="handleAction('received-items')">
-                <div class="action-icon icon-pink">
-                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 7h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zM10 4h4v3h-4V4z"/></svg>
-                </div>
-                <span class="action-label" id="action-received-items">استلامات متعلقة</span>
-            </button>
-
         </div>
+
     </main>
 
     <!-- MODAL -->
