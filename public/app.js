@@ -115,7 +115,7 @@ const translations = {
         leaveRequestsTitle: 'طلبات الموظف',
         leaveRequestedTotal: 'إجمالي الأيام المطلوبة',
         leaveTotalVacations: 'إجمالي رصيد الإجازات',
-        leaveUsedVacations: 'المستخدم من رصيد الإجازات',
+        leaveUsedVacations: 'المستنفذ من رصيد الإجازات',
         leaveRemainingVacations: 'المتبقي من رصيد الإجازات',
         leaveQuotaMissing: 'لا توجد بيانات رصيد إجازات (Entitle/Deduct/Rest) من SAP لهذا الموظف.',
         leaveAbsenceQuotaTitle: 'رصيد الإجازات',
@@ -870,10 +870,10 @@ function renderLeaveHistory(records, bundle = currentLeaveBundle) {
 
     content.innerHTML = `
         <div class="leave-summary-row">
-            <div class="leave-summary-badge">${t('leaveRequestedTotal')}: <strong>${escapeHtml(requestedTotal.toFixed(2))}</strong></div>
             <div class="leave-summary-badge">${t('leaveTotalVacations')}: <strong>${escapeHtml(vacationSummary.total.toFixed(2))}</strong></div>
             <div class="leave-summary-badge">${t('leaveUsedVacations')}: <strong>${escapeHtml(vacationSummary.used.toFixed(2))}</strong></div>
             <div class="leave-summary-badge">${t('leaveRemainingVacations')}: <strong>${escapeHtml(vacationSummary.remaining.toFixed(2))}</strong></div>
+            <div class="leave-summary-badge">${t('leaveRequestedTotal')}: <strong>${escapeHtml(requestedTotal.toFixed(2))}</strong></div>
         </div>
         ${hasQuotaRows ? '' : `<div class="leave-history-message">${t('leaveQuotaMissing')}</div>`}
         ${overviewHtml}

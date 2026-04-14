@@ -787,8 +787,7 @@ html[dir="ltr"] .timer-content {
     .profile-details-grid { grid-template-columns: 1fr; }
 }
 
-
-@media (max-width: 450px) {
+@media (max-width: 450px) { 
     .actions-grid { grid-template-columns: 1fr; }
     .profile-photo-ring { width: 112px; height: 112px; }
     .photo-status { max-width: 100%; }
