@@ -827,7 +827,7 @@ app.get('/api/employee/:id', async (req, res, next) => {
                 error: 'SAP login failed (401) — add SAP_USERNAME and SAP_PASSWORD to your .env file',
                 httpStatus: status
             });
-            
+
         }
 
         console.error('SAP API Error:', error.message);

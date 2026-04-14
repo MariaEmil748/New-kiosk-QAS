@@ -842,7 +842,6 @@ function renderLeaveHistory(records, bundle = currentLeaveBundle) {
     const overviewHtml = safeRecords.length
         ? `
             ${overviewTitleHtml}
-            
             <table class="leave-history-table">
                 <thead>
                     <tr>
