@@ -820,12 +820,14 @@ app.get('/api/employee/:id', async (req, res, next) => {
             return res.status(error.status).json(error.payload || { error: error.message });
         }
 
+
         const status = error.response?.status;
         if (status === 401 || status === 403) {
             return res.status(401).json({
                 error: 'SAP login failed (401) — add SAP_USERNAME and SAP_PASSWORD to your .env file',
                 httpStatus: status
             });
+            
         }
 
         console.error('SAP API Error:', error.message);
@@ -1167,7 +1169,7 @@ app.post('/api/leave-request', async (req, res) => {
             })
         }
     ];
-    
+
 
     if (SAP_LEAVE_CREATE_METHOD === 'POST') {
         attemptPlans.reverse();
