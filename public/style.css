@@ -786,6 +786,8 @@ html[dir="ltr"] .timer-content {
     .logout-timer { font-size: 12px; }
     .profile-details-grid { grid-template-columns: 1fr; }
 }
+
+
 @media (max-width: 450px) {
     .actions-grid { grid-template-columns: 1fr; }
     .profile-photo-ring { width: 112px; height: 112px; }

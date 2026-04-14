@@ -841,6 +841,7 @@ function renderLeaveHistory(records, bundle = currentLeaveBundle) {
     const overviewTitleHtml = `<div class="leave-subsection-title">${t('leaveRequestsTitle')}</div>`;
     const overviewHtml = safeRecords.length
         ? `
+        
             ${overviewTitleHtml}
             <table class="leave-history-table">
                 <thead>
