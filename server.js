@@ -11,7 +11,7 @@ const PORT = 3000;
 
 function normalizeServiceUrl(value) {
     return String(value || '')
-        .replace(/tbtd-sandbox\.tbtd-eg:8061/i, 'tbtd-sandbox.tbtd-egypt.com:8061')
+    .replace(/tbtd-qas\.tbtd-eg:8061/i, 'tbtd-qas.tbtd-egypt.com:8061')
         .replace(/\/?\?.*$/, '')
         .replace(/\/$/, '');
 }
@@ -20,6 +20,8 @@ const SAP_SERVICE_URL = normalizeServiceUrl(process.env.SAP_SERVICE_URL || '');
 const SAP_EMPLOYEE_ENTITY = process.env.SAP_EMPLOYEE_ENTITY || 'EmployeeSet';
 const SAP_EMPLOYEE_ID_FIELD = process.env.SAP_EMPLOYEE_ID_FIELD || 'EmployeeID';
 const SAP_EMPLOYEE_LOOKUP_MODE = (process.env.SAP_EMPLOYEE_LOOKUP_MODE || 'filter').toLowerCase();
+const SAP_EVENTS_ENTITY = process.env.SAP_EVENTS_ENTITY || 'EventsSet';
+const SAP_EXDOCUMENT_ENTITY = process.env.SAP_EXDOCUMENT_ENTITY || 'ExDocumentSet';
 const SAP_CLIENT = process.env.SAP_CLIENT || '200';
 const SAP_PHOTO_SERVICE_URL = normalizeServiceUrl(process.env.SAP_PHOTO_SERVICE_URL || '');
 const SAP_PHOTO_ENTITY = process.env.SAP_PHOTO_ENTITY || 'EmployeeProfileSet';
@@ -589,6 +591,38 @@ async function resolvePhotoFromDedicatedApi(employeeId) {
     return '';
 }
 
+async function fetchSapCollectionByPernr(entitySetName, normalizedEmployeeId) {
+    const auth = getSapAuth();
+    const sapHeaders = getSapHeaders();
+    const shortId = String(Number(normalizedEmployeeId));
+    const pernrCandidates = [...new Set([normalizedEmployeeId, shortId])].filter(Boolean);
+
+    for (const pernr of pernrCandidates) {
+        try {
+            const response = await axios.get(`${SAP_SERVICE_URL}/${entitySetName}`, {
+                params: {
+                    '$format': 'json',
+                    '$filter': `Pernr eq '${pernr}'`
+                },
+                auth,
+                headers: sapHeaders,
+                timeout: 15000
+            });
+
+            const rows = extractODataResults(response.data);
+            if (rows.length) return rows;
+        } catch (error) {
+            const status = error.response?.status;
+            if (status === 400 || status === 404) {
+                continue;
+            }
+            throw error;
+        }
+    }
+
+    return [];
+}
+
 async function findEmployeeById(employeeId) {
     const normalizedEmployeeId = normalizeEmployeeInput(employeeId);
 
@@ -905,6 +939,56 @@ app.get('/api/employee/from-device', async (req, res) => {
         return res.status(500).json({
             error: 'Failed to read scan from ZKTeco device.',
             details: error.message
+        });
+    }
+});
+
+app.get('/api/kiosk-srv/:id', async (req, res) => {
+    const employeeId = req.params.id;
+    const normalizedEmployeeId = normalizeEmployeeInput(employeeId);
+
+    try {
+        const [employeeProfile, events, exDocument] = await Promise.all([
+            findEmployeeById(normalizedEmployeeId),
+            fetchSapCollectionByPernr(SAP_EVENTS_ENTITY, normalizedEmployeeId),
+            fetchSapCollectionByPernr(SAP_EXDOCUMENT_ENTITY, normalizedEmployeeId)
+        ]);
+
+        return res.json({
+            employeeId,
+            normalizedEmployeeId,
+            serviceUrl: SAP_SERVICE_URL,
+            endpoints: {
+                employeeProfileSet: `${SAP_SERVICE_URL}/${SAP_EMPLOYEE_ENTITY}('${normalizedEmployeeId}')?$format=json`,
+                eventsSet: `${SAP_SERVICE_URL}/${SAP_EVENTS_ENTITY}?$filter=Pernr eq '${normalizedEmployeeId}'&$format=json`,
+                exDocumentSet: `${SAP_SERVICE_URL}/${SAP_EXDOCUMENT_ENTITY}?$filter=Pernr eq '${normalizedEmployeeId}'&$format=json`
+            },
+            counts: {
+                employeeProfile: employeeProfile ? 1 : 0,
+                events: events.length,
+                exDocument: exDocument.length
+            },
+            employeeProfile,
+            events,
+            exDocument
+        });
+    } catch (error) {
+        if (error.status) {
+            return res.status(error.status).json(error.payload || { error: error.message });
+        }
+
+        const status = error.response?.status;
+        if (status === 401 || status === 403) {
+            return res.status(401).json({
+                error: 'SAP login failed (401) — add SAP_USERNAME and SAP_PASSWORD to your .env file',
+                httpStatus: status
+            });
+        }
+
+        return res.status(500).json({
+            error: 'Failed to fetch EmployeeProfileSet, EventsSet and ExDocumentSet',
+            details: error.message,
+            hint: 'Check SAP_SERVICE_URL, SAP_EVENTS_ENTITY, SAP_EXDOCUMENT_ENTITY and credentials'
         });
     }
 });
