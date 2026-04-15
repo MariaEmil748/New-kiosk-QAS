@@ -1248,7 +1248,7 @@ app.get('/api/leave-overview/:id', async (req, res) => {
             count: records.length,
             records
         });
-    } catch (error) {
+    } catch (error) { 
         const status = error.response?.status;
         if (status === 401 || status === 403) {
             return res.status(401).json({
