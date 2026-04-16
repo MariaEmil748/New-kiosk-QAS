@@ -912,10 +912,15 @@ function displayEmployee(employee, shouldLoadLeaveHistory = true) {
     const safeTitle = employee.title || t('unavailable');
     const safeLocation = employee.location || t('unavailable');
     const safeApprover = employee.approver || t('unavailable');
-    const safePhoto = employee.photo || 'https://ui-avatars.com/api/?name=Employee&background=1d4ed8&color=fff&size=512';
+    const fallbackPhoto = 'https://ui-avatars.com/api/?name=Employee&background=1d4ed8&color=fff&size=512';
+    const photoSource = employee.photo || (employee.hrCode ? `/api/employee/${encodeURIComponent(employee.hrCode)}/photo` : '');
+    const safePhoto = photoSource ? `${photoSource}${photoSource.includes('?') ? '&' : '?'}v=${Date.now()}` : fallbackPhoto;
 
     // Set profile data
+    console.log('[DEBUG] displayEmployee - setting photo URL:', safePhoto);
     document.getElementById('emp-photo').src = safePhoto;
+    document.getElementById('emp-photo').onerror = () => console.error('[DEBUG] Photo failed to load:', safePhoto);
+    document.getElementById('emp-photo').onload = () => console.log('[DEBUG] Photo loaded successfully:', safePhoto);
     document.getElementById('emp-name').textContent = safeName;
     document.getElementById('emp-hr-code').textContent = safeId;
     document.getElementById('emp-title').textContent = safeTitle;

@@ -83,6 +83,17 @@ const mockEmployees = {
 // ============================================
 app.use(cors());
 app.use(express.json());
+
+// Disable caching for JS/CSS files to ensure updates are seen immediately
+app.use((req, res, next) => {
+    if (req.url.endsWith('.js') || req.url.endsWith('.css') || req.url.endsWith('.html')) {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+    }
+    next();
+});
+
 app.use(express.static(__dirname + '/public'));// serves your HTML/CSS/JS files
 
 // ============================================
@@ -554,6 +565,33 @@ async function fetchLegacyLeaveOverviewRecords(normalizedEmployeeId) {
     return extractODataResults(response.data).map(normalizeLeaveOverviewItem);
 }
 
+function isProbablyBase64(value) {
+    if (typeof value !== 'string') return false;
+    const compact = value.replace(/\s/g, '').replace(/=+$/, '');
+    return compact.length >= 100 && /^[A-Za-z0-9+/]+$/.test(compact);
+}
+
+function getBestExDocumentLine(rows) {
+    // The photo data is spread across multiple rows in the ExDocument table.
+    // Each row contains a base64-encoded chunk of 1024 bytes.
+    // We need to decode each chunk and concatenate them to get the full photo.
+    const lines = (Array.isArray(rows) ? rows : [])
+        .map((row) => String(row?.Line || '').trim())
+        .filter((line) => line && isProbablyBase64(line));
+
+    if (!lines.length) return '';
+    
+    // Decode each base64 chunk to binary, concatenate, then re-encode
+    try {
+        const buffers = lines.map(line => Buffer.from(line, 'base64'));
+        const combined = Buffer.concat(buffers);
+        return combined.toString('base64');
+    } catch (error) {
+        console.error('Error combining ExDocument lines:', error.message);
+        return '';
+    }
+}
+
 async function resolvePhotoFromDedicatedApi(employeeId) {
     if (!SAP_PHOTO_SERVICE_URL) {
         return '';
@@ -652,7 +690,12 @@ async function findEmployeeById(employeeId) {
 
                 const directEmployee = sapResponse.data?.d || sapResponse.data?.value || sapResponse.data;
                 if (directEmployee && typeof directEmployee === 'object') {
-                    const photoOverride = await resolvePhotoFromDedicatedApi(employeeId);
+                    // Try to fetch ExDocumentSet for employee photo
+                    const exDocumentRows = await fetchSapCollectionByPernr(SAP_EXDOCUMENT_ENTITY, normalizedEmployeeId).catch(() => []);
+                    const bestLine = getBestExDocumentLine(exDocumentRows);
+                    const photoOverride = bestLine
+                        ? `/api/employee/${encodeURIComponent(normalizedEmployeeId)}/photo`
+                        : await resolvePhotoFromDedicatedApi(employeeId);
                     return normalizeSapEmployee(directEmployee, employeeId, photoOverride);
                 }
             } catch (candidateError) {
@@ -704,7 +747,12 @@ async function findEmployeeById(employeeId) {
         throw createHttpError(404, { error: 'Employee not found in SAP (filter mode)' });
     }
 
-    const photoOverride = await resolvePhotoFromDedicatedApi(employeeId);
+    // Try to fetch ExDocumentSet for employee photo
+    const exDocumentRows = await fetchSapCollectionByPernr(SAP_EXDOCUMENT_ENTITY, normalizedEmployeeId).catch(() => []);
+    const bestLine = getBestExDocumentLine(exDocumentRows);
+    const photoOverride = bestLine
+        ? `/api/employee/${encodeURIComponent(normalizedEmployeeId)}/photo`
+        : await resolvePhotoFromDedicatedApi(employeeId);
     return normalizeSapEmployee(results[0], employeeId, photoOverride);
 }
 
@@ -837,11 +885,53 @@ async function waitForNextDeviceScan(timeoutMs = 45000, pollEveryMs = 2500) {
 // ============================================
 // MAIN ROUTE — get employee data by ID
 // ============================================
+app.get('/api/employee/:id/photo', async (req, res) => {
+    const employeeId = req.params.id;
+    const normalizedEmployeeId = normalizeEmployeeInput(employeeId);
+
+    try {
+        if (!SAP_SERVICE_URL) {
+            console.log('[PHOTO] SAP_SERVICE_URL not configured');
+            return res.status(404).json({ error: 'Photo endpoint is unavailable in mock mode.' });
+        }
+
+        console.log(`[PHOTO] Fetching photo for employee: ${employeeId} (normalized: ${normalizedEmployeeId})`);
+        const exDocumentRows = await fetchSapCollectionByPernr(SAP_EXDOCUMENT_ENTITY, normalizedEmployeeId);
+        console.log(`[PHOTO] Retrieved ${exDocumentRows.length} ExDocument rows`);
+        
+        const bestLine = getBestExDocumentLine(exDocumentRows);
+        console.log(`[PHOTO] bestLine length: ${bestLine ? bestLine.length : 0}`);
+
+        if (!bestLine) {
+            console.log(`[PHOTO] No photo found for employee ${employeeId}`);
+            return res.status(404).json({ error: 'Employee photo not found.' });
+        }
+
+        const imageBuffer = Buffer.from(bestLine, 'base64');
+        console.log(`[PHOTO] Created buffer of size ${imageBuffer.length} bytes`);
+        
+        res.setHeader('Content-Type', 'image/jpeg');
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        return res.status(200).send(imageBuffer);
+    } catch (error) {
+        console.error('[PHOTO] Photo endpoint error:', error.message);
+        return res.status(500).json({
+            error: 'Failed to fetch employee photo',
+            details: error.message
+        });
+    }
+});
+
 app.get('/api/employee/:id', async (req, res, next) => {
     const employeeId = req.params.id;
 
-    // Allow the dedicated scan route to handle /api/employee/from-device.
-    if (employeeId === 'from-device') {
+    // Allow other routes to handle /api/employee/from-device and /api/employee/:id/photo.
+    if (employeeId === 'from-device' || employeeId === undefined) {
+        return next();
+    }
+
+    // Skip this handler if photo is in the route path - let photo route handle it
+    if (req.path.includes('/photo')) {
         return next();
     }
 
