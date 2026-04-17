@@ -94,6 +94,7 @@ app.use((req, res, next) => {
     next();
 });
 
+
 app.use(express.static(__dirname + '/public'));// serves your HTML/CSS/JS files
 
 // ============================================
