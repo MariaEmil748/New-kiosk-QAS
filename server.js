@@ -39,6 +39,11 @@ const SAP_LEAVE_CREATE_SERVICE_URL = normalizeServiceUrl(process.env.SAP_LEAVE_C
 const SAP_LEAVE_CREATE_FUNCTION = process.env.SAP_LEAVE_CREATE_FUNCTION || 'YSP_CREATE_LEAVE_REQUEST';
 const SAP_LEAVE_CREATE_ENTITY = process.env.SAP_LEAVE_CREATE_ENTITY || 'LeaveRequestSet';
 const SAP_LEAVE_CREATE_METHOD = (process.env.SAP_LEAVE_CREATE_METHOD || 'GET').toUpperCase();
+const SAP_EMP_EVENTS_SERVICE_URL = normalizeServiceUrl(process.env.SAP_EMP_EVENTS_SERVICE_URL || '');
+const SAP_EMP_EVENTS_ENTITY = process.env.SAP_EMP_EVENTS_ENTITY || 'EventsSet';
+const SAP_EMP_EVENTS_PERNR_FIELD = process.env.SAP_EMP_EVENTS_PERNR_FIELD || 'Pernr';
+const SAP_EMP_EVENTS_UPDATE_METHOD = (process.env.SAP_EMP_EVENTS_UPDATE_METHOD || 'PUT').toUpperCase();
+const SAP_EVENTS_DESC_ENTITY = process.env.SAP_EVENTS_DESC_ENTITY || 'YSP_KIOSK_EVENTS';
 
 const ZK_DEVICE_ENABLED = String(process.env.ZK_DEVICE_ENABLED || 'false').toLowerCase() === 'true';
 const ZK_DEVICE_IP = process.env.ZK_DEVICE_IP || '';
@@ -76,6 +81,138 @@ const mockEmployees = {
         photo: "https://ui-avatars.com/api/?name=Sara+Ali&background=7c3aed&color=fff&size=200",
         receivedItems: []
     }
+};
+
+// Mock employee events data (matching SAP ZKIOSK_EMP_EVT report)
+const mockEmployeeEvents = {
+    "00001001": [
+        {
+            pernr: "00001001",
+            event: 1001,
+            eventDesc: "تدريب أساسي",
+            validFrom: "2024-01-15",
+            validTo: "2024-01-20",
+            confFlag: "X",
+            confDate: "2024-01-14",
+            confTime: "093000",
+            terminalId: "TERM01",
+            doneFlag: ""
+        },
+        {
+            pernr: "00001001",
+            event: 1002,
+            eventDesc: "حضور المؤتمر السنوي",
+            validFrom: "2024-02-01",
+            validTo: "2024-02-03",
+            confFlag: "X",
+            confDate: "2024-01-28",
+            confTime: "140500",
+            terminalId: "TERM02",
+            doneFlag: "X"
+        },
+        {
+            pernr: "00001001",
+            event: 1003,
+            eventDesc: "معايرة الأداء",
+            validFrom: "2024-03-10",
+            validTo: "2024-03-10",
+            confFlag: "",
+            confDate: "",
+            confTime: "",
+            terminalId: "",
+            doneFlag: ""
+        }
+    ],
+    "00001002": [
+        {
+            pernr: "00001002",
+            event: 2001,
+            eventDesc: "ورشة عمل إدارة الموارد البشرية",
+            validFrom: "2024-02-05",
+            validTo: "2024-02-07",
+            confFlag: "X",
+            confDate: "2024-02-03",
+            confTime: "100000",
+            terminalId: "TERM01",
+            doneFlag: ""
+        },
+        {
+            pernr: "00001002",
+            event: 2002,
+            eventDesc: "اجتماع إعادة التنظيم",
+            validFrom: "2024-03-01",
+            validTo: "2024-03-01",
+            confFlag: "",
+            confDate: "",
+            confTime: "",
+            terminalId: "",
+            doneFlag: ""
+        }
+    ],
+    "1001": [
+        {
+            pernr: "1001",
+            event: 1001,
+            eventDesc: "تدريب أساسي",
+            validFrom: "2024-01-15",
+            validTo: "2024-01-20",
+            confFlag: "X",
+            confDate: "2024-01-14",
+            confTime: "093000",
+            terminalId: "TERM01",
+            doneFlag: ""
+        },
+        {
+            pernr: "1001",
+            event: 1002,
+            eventDesc: "حضور المؤتمر السنوي",
+            validFrom: "2024-02-01",
+            validTo: "2024-02-03",
+            confFlag: "X",
+            confDate: "2024-01-28",
+            confTime: "140500",
+            terminalId: "TERM02",
+            doneFlag: "X"
+        },
+        {
+            pernr: "1001",
+            event: 1003,
+            eventDesc: "معايرة الأداء",
+            validFrom: "2024-03-10",
+            validTo: "2024-03-10",
+            confFlag: "",
+            confDate: "",
+            confTime: "",
+            terminalId: "",
+            doneFlag: ""
+        }
+    ],
+    "1002": [
+        {
+            pernr: "1002",
+            event: 2001,
+            eventDesc: "ورشة عمل إدارة الموارد البشرية",
+            validFrom: "2024-02-05",
+            validTo: "2024-02-07",
+            confFlag: "X",
+            confDate: "2024-02-03",
+            confTime: "100000",
+            terminalId: "TERM01",
+            doneFlag: ""
+        },
+        {
+            pernr: "1002",
+            event: 2002,
+            eventDesc: "اجتماع إعادة التنظيم",
+            validFrom: "2024-03-01",
+            validTo: "2024-03-01",
+            confFlag: "",
+            confDate: "",
+            confTime: "",
+            terminalId: "",
+            doneFlag: ""
+        }
+    ]
 };
 
 // ============================================
@@ -418,6 +555,11 @@ function getLeaveOverviewNewServiceUrl() {
     const hostMatch = SAP_SERVICE_URL.match(/^(https?:\/\/[^/]+)/i);
     if (!hostMatch) return '';
     return `${hostMatch[1]}/sap/opu/odata/SAP/ZDATA_KIOSK_LEAVE_OVERVIEW_NEW_SRV`;
+}
+
+function getEventsServiceUrl() {
+    if (SAP_EMP_EVENTS_SERVICE_URL) return SAP_EMP_EVENTS_SERVICE_URL;
+    return SAP_SERVICE_URL;
 }
 
 async function fetchAbsenceQuotaPreferred(normalizedEmployeeId) {
@@ -1443,6 +1585,170 @@ app.get('/api/leave-overview/:id', async (req, res) => {
             error: 'Failed to fetch leave overview from SAP',
             details: error.message,
             hint: 'Check SAP_SERVICE_URL, SAP_LEAVE_ENTITY, SAP_LEAVE_EMPLOYEE_FIELD and credentials'
+        });
+    }
+});
+
+// ============================================
+// EMPLOYEE EVENTS ENDPOINTS
+// ============================================
+
+function normalizeEventRow(row, fallbackPernr = '') {
+    return {
+        pernr: String(pickFirst(row, ['Pernr', 'PERNR', 'pernr'], fallbackPernr)),
+        event: Number(pickFirst(row, ['Event', 'EVENT', 'event'], 0)),
+        eventDesc: String(pickFirst(row, ['EVENT_DESC', 'eventDesc'], '')),
+        validFrom: parseSapDateValue(pickFirst(row, ['ValidFrom', 'VALID_FROM', 'validFrom', 'Begda'], '')),
+        validTo: parseSapDateValue(pickFirst(row, ['ValidTo', 'VALID_TO', 'validTo', 'Endda'], '')),
+        confFlag: String(pickFirst(row, ['ConfFlag', 'CONF_FLAG', 'confFlag'], '')),
+        confDate: parseSapDateValue(pickFirst(row, ['ConfDate', 'CONF_DATE', 'confDate'], '')),
+        confTime: String(pickFirst(row, ['ConfTime', 'CONF_TIME', 'confTime'], '')),
+        terminalId: String(pickFirst(row, ['TerminalId', 'TERMINAL_ID', 'terminalId'], '')),
+        doneFlag: String(pickFirst(row, ['DoneFlag', 'DONE_FLAG', 'doneFlag'], ''))
+    };
+}
+
+// Fetch employee events
+app.get('/api/events/:id', async (req, res) => {
+    const employeeId = req.params.id;
+    const normalizedEmployeeId = normalizeEmployeeInput(employeeId);
+
+    try {
+        const eventsServiceUrl = getEventsServiceUrl();
+        if (!eventsServiceUrl || !SAP_EMP_EVENTS_ENTITY) {
+            return res.status(500).json({
+                error: 'SAP events service is not configured.',
+                hint: 'Set SAP_SERVICE_URL or SAP_EMP_EVENTS_SERVICE_URL, and SAP_EMP_EVENTS_ENTITY in .env.'
+            });
+        }
+
+        const auth = process.env.SAP_USERNAME && process.env.SAP_PASSWORD
+            ? { username: process.env.SAP_USERNAME, password: process.env.SAP_PASSWORD }
+            : undefined;
+
+        const pernrCandidates = [...new Set([normalizedEmployeeId, String(Number(normalizedEmployeeId))])].filter(Boolean);
+        let events = [];
+
+        for (const pernrCandidate of pernrCandidates) {
+            const sapResponse = await axios.get(`${eventsServiceUrl}/${SAP_EMP_EVENTS_ENTITY}`, {
+                params: {
+                    '$format': 'json',
+                    '$filter': `${SAP_EMP_EVENTS_PERNR_FIELD} eq '${pernrCandidate}'`
+                },
+                auth,
+                headers: getSapHeaders(),
+                timeout: 15000
+            });
+
+            events = extractODataResults(sapResponse.data).map((row) => normalizeEventRow(row, normalizedEmployeeId));
+            if (events.length) {
+                break;
+            }
+        }
+
+        return res.json({
+            employeeId,
+            normalizedEmployeeId,
+            count: events.length,
+            events: events,
+            source: 'sap'
+        });
+    } catch (error) {
+        const status = error.response?.status;
+        if (status === 401 || status === 403) {
+            return res.status(401).json({
+                error: 'SAP login failed for events service.',
+                httpStatus: status
+            });
+        }
+        return res.status(500).json({
+            error: 'Failed to fetch employee events from SAP',
+            details: error.response?.data?.error?.message?.value || error.message,
+            hint: 'Check EventsSet access. Expected format: /EventsSet?$filter=Pernr eq ...&$format=json'
+        });
+    }
+});
+
+// Update employee event confirmation
+app.post('/api/events/confirm', async (req, res) => {
+    const pernr = req.body?.pernr || req.body?.employeeId || '';
+    const event = req.body?.event || 0;
+    const validFrom = req.body?.validFrom || '';
+    const validTo = req.body?.validTo || '';
+    const doneFlag = req.body?.doneFlag || 'X';
+
+    if (!pernr || !event) {
+        return res.status(400).json({
+            error: 'Missing required fields: pernr, event',
+            ok: false
+        });
+    }
+
+    try {
+        const normalizedPernr = normalizeEmployeeInput(pernr);
+        const eventsServiceUrl = getEventsServiceUrl();
+
+        if (!eventsServiceUrl || !SAP_EMP_EVENTS_ENTITY) {
+            return res.status(500).json({
+                error: 'SAP events service is not configured.',
+                hint: 'Set SAP_SERVICE_URL or SAP_EMP_EVENTS_SERVICE_URL, and SAP_EMP_EVENTS_ENTITY in .env.',
+                ok: false
+            });
+        }
+
+        const auth = process.env.SAP_USERNAME && process.env.SAP_PASSWORD
+            ? { username: process.env.SAP_USERNAME, password: process.env.SAP_PASSWORD }
+            : undefined;
+
+        const csrfHeaders = await getSapCsrfHeaders(eventsServiceUrl, auth);
+
+        // Prepare the update payload matching SAP structure
+        const updatePayload = {
+            Pernr: normalizedPernr,
+            Event: Number(event),
+            VALID_FROM: formatSapJsonDateInput(validFrom),
+            VALID_TO: formatSapJsonDateInput(validTo),
+            DONE_FLAG: doneFlag,
+            CONF_FLAG: 'X',
+            CONF_DATE: formatSapJsonDateInput(new Date().toISOString().split('T')[0]),
+            CONF_TIME: new Date().toTimeString().slice(0, 8).replace(/:/g, '')
+        };
+
+        const eventKeyUrl = `${eventsServiceUrl}/${SAP_EMP_EVENTS_ENTITY}(Pernr='${normalizedPernr}',Event=${Number(event)})`;
+
+        const method = SAP_EMP_EVENTS_UPDATE_METHOD === 'PATCH' ? 'patch' : 'put';
+
+        await axios[method](
+            eventKeyUrl,
+            updatePayload,
+            {
+                auth,
+                headers: csrfHeaders,
+                timeout: 15000
+            }
+        );
+
+        return res.json({
+            ok: true,
+            message: 'Event confirmed successfully in SAP',
+            pernr: normalizedPernr,
+            event: Number(event),
+            source: 'sap'
+        });
+    } catch (error) {
+        const status = error.response?.status;
+        if (status === 401 || status === 403) {
+            return res.status(401).json({
+                error: 'SAP login failed for event confirmation.',
+                httpStatus: status,
+                ok: false
+            });
+        }
+        return res.status(500).json({
+            error: 'Failed to confirm event in SAP',
+            details: error.response?.data?.error?.message?.value || error.message,
+            hint: "Expected format: /EventsSet(Pernr='00000102',Event=2)",
+            ok: false
         });
     }
 });

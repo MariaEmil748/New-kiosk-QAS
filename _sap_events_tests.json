@@ -1,0 +1,14 @@
+[
+    {
+        "filter":  "Pernr eq \u002700000102\u0027",
+        "count":  0
+    },
+    {
+        "filter":  "Pernr eq \u0027102\u0027",
+        "count":  0
+    },
+    {
+        "filter":  "Pernr eq \u002700004688\u0027",
+        "count":  1
+    }
+]

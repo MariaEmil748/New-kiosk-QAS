@@ -11,6 +11,41 @@ const mockEmployees = {
         annualLeave: 21,
         sickLeave: 7,
         remainingLeave: 14,
+        events: [
+            {
+                event: 1001,
+                eventDesc: "تدريب أساسي",
+                validFrom: "2024-01-15",
+                validTo: "2024-01-20",
+                confFlag: "X",
+                confDate: "2024-01-14",
+                confTime: "093000",
+                terminalId: "TERM01",
+                doneFlag: ""
+            },
+            {
+                event: 1002,
+                eventDesc: "حضور المؤتمر السنوي",
+                validFrom: "2024-02-01",
+                validTo: "2024-02-03",
+                confFlag: "X",
+                confDate: "2024-01-28",
+                confTime: "140500",
+                terminalId: "TERM02",
+                doneFlag: "X"
+            },
+            {
+                event: 1003,
+                eventDesc: "معايرة الأداء",
+                validFrom: "2024-03-10",
+                validTo: "2024-03-10",
+                confFlag: "",
+                confDate: "",
+                confTime: "",
+                terminalId: "",
+                doneFlag: ""
+            }
+        ],
         receivedItems: [
             { name: "لابتوب Dell XPS 15", date: "2024-01-15", status: "received" },
             { name: "هاتف iPhone 14", date: "2024-01-15", status: "received" },
@@ -28,6 +63,30 @@ const mockEmployees = {
         annualLeave: 21,
         sickLeave: 3,
         remainingLeave: 18,
+        events: [
+            {
+                event: 2001,
+                eventDesc: "ورشة عمل إدارة الموارد البشرية",
+                validFrom: "2024-02-05",
+                validTo: "2024-02-07",
+                confFlag: "X",
+                confDate: "2024-02-03",
+                confTime: "100000",
+                terminalId: "TERM01",
+                doneFlag: ""
+            },
+            {
+                event: 2002,
+                eventDesc: "اجتماع إعادة التنظيم",
+                validFrom: "2024-03-01",
+                validTo: "2024-03-01",
+                confFlag: "",
+                confDate: "",
+                confTime: "",
+                terminalId: "",
+                doneFlag: ""
+            }
+        ],
         receivedItems: [
             { name: "لابتوب HP EliteBook", date: "2023-06-10", status: "received" },
             { name: "بطاقة دخول", date: "2023-06-10", status: "received" },
@@ -44,6 +103,7 @@ const mockEmployees = {
         annualLeave: 21,
         sickLeave: 0,
         remainingLeave: 21,
+        events: [],
         receivedItems: [
             { name: "لابتوب Lenovo ThinkPad", date: "2022-09-05", status: "received" },
             { name: "بطاقة دخول", date: "2022-09-05", status: "received" },
@@ -62,12 +122,128 @@ const mockEmployees = {
         annualLeave: 21,
         sickLeave: 0,
         remainingLeave: 21,
+        events: [],
+        annualLeave: 21,
+        sickLeave: 0,
+        remainingLeave: 21,
         receivedItems: [
             { name: "بطاقة دخول", date: "2024-01-01", status: "received" },
             { name: "لابتوب", date: "2024-01-01", status: "received" }
         ]
     }
 };
+
+const fallbackEvents = [
+    {
+        event: 9001,
+        eventDesc: "برنامج تهيئة الموظفين",
+        validFrom: "2026-04-20",
+        validTo: "2026-04-22",
+        confFlag: "X",
+        confDate: "2026-04-19",
+        confTime: "090000",
+        terminalId: "TERM01",
+        doneFlag: ""
+    },
+    {
+        event: 9002,
+        eventDesc: "جلسة تحديث السياسات",
+        validFrom: "2026-04-25",
+        validTo: "2026-04-25",
+        confFlag: "",
+        confDate: "",
+        confTime: "",
+        terminalId: "",
+        doneFlag: ""
+    }
+];
+
+function normalizeEmployeeId(value) {
+    return String(value || '')
+        .replace(/\D/g, '')
+        .replace(/^0+/, '');
+}
+
+function findMockEmployeeByAnyId(employeeId) {
+    const raw = String(employeeId || '').trim();
+    const normalized = normalizeEmployeeId(raw);
+    const padded = normalized ? normalized.padStart(8, '0') : '';
+
+    if (mockEmployees[raw]) return mockEmployees[raw];
+    if (mockEmployees[normalized]) return mockEmployees[normalized];
+    if (mockEmployees[padded]) return mockEmployees[padded];
+
+    const matchedByHrCode = Object.values(mockEmployees).find((employee) => {
+        const hrCodeNormalized = normalizeEmployeeId(employee.hrCode);
+        return hrCodeNormalized && hrCodeNormalized === normalized;
+    });
+
+    return matchedByHrCode || null;
+}
+
+const EVENT_STORE_KEY = 'kiosk-events-store';
+
+function loadEventsStore() {
+    try {
+        const raw = localStorage.getItem(EVENT_STORE_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (error) {
+        return {};
+    }
+}
+
+function saveEventsStore(store) {
+    try {
+        localStorage.setItem(EVENT_STORE_KEY, JSON.stringify(store || {}));
+    } catch (error) {
+        // Ignore storage errors in kiosk mode.
+    }
+}
+
+function getEmployeeIdForEvents(employee) {
+    if (!employee) return '';
+    return normalizeEmployeeId(employee.hrCode || employee.employeeId || employee.pernr || '');
+}
+
+function getEmployeeEvents(employee) {
+    const id = getEmployeeIdForEvents(employee);
+    const store = loadEventsStore();
+    if (id && Array.isArray(store[id]) && store[id].length > 0) {
+        return store[id].map((event) => ({ ...event }));
+    }
+
+    if (Array.isArray(employee?.events) && employee.events.length > 0) {
+        return employee.events.map((event) => ({ ...event }));
+    }
+
+    const mock = findMockEmployeeByAnyId(id);
+    if (Array.isArray(mock?.events) && mock.events.length > 0) {
+        return mock.events.map((event) => ({ ...event }));
+    }
+
+    return fallbackEvents.map((event) => ({ ...event }));
+}
+
+function setEmployeeEvents(employee, events) {
+    const safeEvents = Array.isArray(events) ? events.map((event) => ({ ...event })) : [];
+    if (employee) {
+        employee.events = safeEvents;
+    }
+
+    const id = getEmployeeIdForEvents(employee);
+    if (id) {
+        const store = loadEventsStore();
+        store[id] = safeEvents;
+        saveEventsStore(store);
+    }
+
+    const mock = findMockEmployeeByAnyId(id);
+    if (mock) {
+        mock.events = safeEvents.map((event) => ({ ...event }));
+    }
+}
 
 // Current logged in employee
 let currentEmployee = null;
@@ -104,6 +280,23 @@ const translations = {
         leaveHistoryTitle: 'سجل الإجازات',
         leaveLoading: 'جاري تحميل سجل الإجازات...',
         leaveNoData: 'لا توجد بيانات إجازات لهذا الموظف.',
+        eventsTitle: 'الأحداث والتدريبات',
+        eventsLoading: 'جاري تحميل الأحداث...',
+        eventsNoData: 'لا توجد أحداث لهذا الموظف.',
+        eventsLoadFailed: 'تعذر تحميل الأحداث.',
+        eventsHdrEvent: 'الحدث',
+        eventsHdrDescription: 'الوصف',
+        eventsHdrFrom: 'من',
+        eventsHdrTo: 'إلى',
+        eventsHdrStatus: 'الحالة',
+        eventsHdrConfirmed: 'تأكيد',
+        eventsDone: 'مكتمل',
+        eventsAccepted: 'مقبول',
+        eventsPending: 'قيد الانتظار',
+        eventsConfirm: 'تأكيد',
+        eventsSave: 'حفظ التأكيدات',
+        eventsSaveSuccess: 'تم حفظ التأكيدات بنجاح',
+        eventsSaveFailed: 'تعذر حفظ التأكيدات',
         leaveLoadFailed: 'تعذر تحميل سجل الإجازات.',
         leaveHdrType: 'نوع الإجازة',
         leaveHdrTotal: 'الإجمالي',
@@ -177,6 +370,23 @@ const translations = {
         leaveHistoryTitle: 'Leave history',
         leaveLoading: 'Loading leave history...',
         leaveNoData: 'No leave data found for this employee.',
+        eventsTitle: 'Events and Training',
+        eventsLoading: 'Loading events...',
+        eventsNoData: 'No events found for this employee.',
+        eventsLoadFailed: 'Unable to load events.',
+        eventsHdrEvent: 'Event',
+        eventsHdrDescription: 'Description',
+        eventsHdrFrom: 'From',
+        eventsHdrTo: 'To',
+        eventsHdrStatus: 'Status',
+        eventsHdrConfirmed: 'Confirmed',
+        eventsDone: 'Done',
+        eventsAccepted: 'Accepted',
+        eventsPending: 'Pending',
+        eventsConfirm: 'Confirm',
+        eventsSave: 'Save confirmations',
+        eventsSaveSuccess: 'Confirmations saved successfully',
+        eventsSaveFailed: 'Unable to save confirmations',
         leaveLoadFailed: 'Unable to load leave history.',
         leaveHdrType: 'Leave type',
         leaveHdrTotal: 'Total',
@@ -666,6 +876,7 @@ function applyTranslations() {
     document.getElementById('label-org-unit').textContent = dictionary.labelOrgUnit;
     document.getElementById('label-approver').textContent = dictionary.labelApprover;
     document.getElementById('leave-history-title').textContent = dictionary.leaveHistoryTitle;
+    document.getElementById('events-title').textContent = dictionary.eventsTitle;
     document.getElementById('section-title').textContent = dictionary.sectionTitle;
     const futureSectionTitle = document.getElementById('future-section-title');
     if (futureSectionTitle) {
@@ -686,6 +897,7 @@ function applyTranslations() {
 
     if (currentEmployee) {
         displayEmployee(currentEmployee, false);
+        fetchAndDisplayEvents();
     }
 }
 
@@ -710,14 +922,13 @@ async function fetchEmployee() {
             throw new Error(errorBody.error || `API returned ${response.status}`);
         }
 
-        const employee = await response.json();
+        let employee = await response.json();
+        
         currentEmployee = employee;
         displayEmployee(employee);
     } catch (apiError) {
         // Fallback to mock data when SAP is unavailable
-        const key = String(empId).replace(/^0+/, '') || empId;
-        const paddedKey = String(empId).padStart(8, '0');
-        const mock = mockEmployees[key] || mockEmployees[paddedKey] || mockEmployees[empId];
+        const mock = findMockEmployeeByAnyId(empId);
         if (mock) {
             currentEmployee = mock;
             displayEmployee(mock);
@@ -739,7 +950,7 @@ async function fetchEmployeeFromDevice() {
 
     try {
         const response = await fetch('/api/employee/from-device?timeoutMs=45000');
-        const payload = await response.json().catch(() => ({}));
+        let payload = await response.json().catch(() => ({}));
 
         if (!response.ok) {
             if (response.status === 404) {
@@ -939,6 +1150,7 @@ function displayEmployee(employee, shouldLoadLeaveHistory = true) {
         const leaveLookupId = String(employee.hrCode || '').trim();
         if (leaveLookupId) {
             loadLeaveHistory(leaveLookupId);
+            fetchAndDisplayEvents(); // Load events
         } else {
             currentLeaveRecords = [];
             currentLeaveBundle = null;
@@ -1123,6 +1335,7 @@ function goBack() {
     document.getElementById('emp-id-input').value = '';
     currentLeaveRecords = [];
     currentLeaveBundle = null;
+    currentEvents = [];
     renderLeaveHistory(currentLeaveRecords, currentLeaveBundle);
     currentEmployee = null;
 }
@@ -1206,5 +1419,175 @@ document.addEventListener('keydown', () => {
 document.getElementById('emp-id-input').addEventListener('keypress', function(e) {
     if (e.key === 'Enter') fetchEmployee();
 });
+
+// ============================================
+// EMPLOYEE EVENTS FUNCTIONS
+// ============================================
+
+// Store current events data
+let currentEvents = [];
+
+async function fetchAndDisplayEvents() {
+    if (!currentEmployee) {
+        return;
+    }
+
+    const eventsContainer = document.getElementById('events-content');
+    if (!eventsContainer) return;
+
+    try {
+        eventsContainer.innerHTML = `<div class="loading">${t('eventsLoading')}</div>`;
+
+        const employeeId = currentEmployee.hrCode || currentEmployee.employeeId || currentEmployee.pernr || '';
+        const response = await fetch(`/api/events/${encodeURIComponent(employeeId)}`);
+        if (!response.ok) {
+            throw new Error(`Events API returned ${response.status}`);
+        }
+
+        const payload = await response.json();
+        const sourceRows = Array.isArray(payload)
+            ? payload
+            : (Array.isArray(payload.events) ? payload.events : []);
+
+        currentEvents = sourceRows.map((row) => ({
+                pernr: row.pernr || row.PERNR || employeeId,
+                event: row.event || row.EVENT,
+                eventDesc: row.eventDesc || row.EVENT_DESC || row.EventDesc || '',
+                validFrom: row.validFrom || row.VALID_FROM || row.Begda || '',
+                validTo: row.validTo || row.VALID_TO || row.Endda || '',
+                confFlag: row.confFlag || row.CONF_FLAG || '',
+                confDate: row.confDate || row.CONF_DATE || '',
+                confTime: row.confTime || row.CONF_TIME || '',
+                terminalId: row.terminalId || row.TERMINAL_ID || '',
+                doneFlag: row.doneFlag || row.DONE_FLAG || ''
+            }));
+
+        if (currentEvents.length === 0) {
+            eventsContainer.innerHTML = `<div class="no-data">${t('eventsNoData')}</div>`;
+            return;
+        }
+
+        // Build events table
+        let html = '<table class="events-table"><thead><tr>';
+        html += `<th>${t('eventsHdrEvent')}</th>`;
+        html += `<th>${t('eventsHdrDescription')}</th>`;
+        html += `<th>${t('eventsHdrFrom')}</th>`;
+        html += `<th>${t('eventsHdrTo')}</th>`;
+        html += `<th>${t('eventsHdrStatus')}</th>`;
+        html += `<th>${t('eventsHdrConfirmed')}</th>`;
+        html += '</tr></thead><tbody>';
+
+        currentEvents.forEach((event, index) => {
+            const statusClass = getEventStatusClass(event);
+            const statusText = getEventStatusText(event);
+            const canConfirm = event.confFlag === 'X' && event.doneFlag !== 'X';
+            const isChecked = event.doneFlag === 'X' ? 'checked' : '';
+
+            html += `<tr class="event-row ${statusClass}">`;
+            html += `<td>${event.event || 'N/A'}</td>`;
+            html += `<td>${event.eventDesc || 'N/A'}</td>`;
+            html += `<td>${formatDate(event.validFrom)}</td>`;
+            html += `<td>${formatDate(event.validTo)}</td>`;
+            html += `<td><span class="status-badge ${statusClass}">${statusText}</span></td>`;
+            html += `<td><input type="checkbox" class="event-checkbox" data-index="${index}" ${isChecked} ${canConfirm ? '' : 'disabled'} /></td>`;
+            html += '</tr>';
+        });
+
+        html += '</tbody></table>';
+        html += `<button class="btn-save-events" onclick="saveEventConfirmations()">${t('eventsSave')}</button>`;
+
+        eventsContainer.innerHTML = html;
+
+        // Add event listeners to checkboxes
+        document.querySelectorAll('.event-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', function() {
+                const index = this.dataset.index;
+                // Can be used for real-time validation if needed
+            });
+        });
+    } catch (error) {
+        console.error('Error displaying events:', error);
+        eventsContainer.innerHTML = `<div class="error">${t('eventsLoadFailed')}</div>`;
+    }
+}
+
+function getEventStatusClass(event) {
+    if (event.doneFlag === 'X') return 'status-done';
+    if (event.confFlag === 'X') return 'status-accepted';
+    return 'status-pending';
+}
+
+function getEventStatusText(event) {
+    if (event.doneFlag === 'X') return t('eventsDone');
+    if (event.confFlag === 'X') return t('eventsAccepted');
+    return t('eventsPending');
+}
+
+function formatDate(dateString) {
+    if (!dateString) return 'N/A';
+    try {
+        const date = new Date(dateString + 'T00:00:00Z');
+        return date.toLocaleDateString(currentLanguage === 'ar' ? 'ar-EG' : 'en-US');
+    } catch (e) {
+        return dateString;
+    }
+}
+
+function saveEventConfirmations() {
+    const checkboxes = document.querySelectorAll('.event-checkbox:checked:not(:disabled)');
+    if (checkboxes.length === 0) {
+        alert(currentLanguage === 'ar' ? 'اختاري حدثاً واحداً على الأقل للتأكيد' : 'Select at least one event to confirm');
+        return;
+    }
+
+    saveEventConfirmationsAsync(Array.from(checkboxes));
+}
+
+async function saveEventConfirmationsAsync(checkboxes) {
+    try {
+        const updates = checkboxes
+            .map((checkbox) => {
+                const index = parseInt(checkbox.dataset.index, 10);
+                return currentEvents[index] || null;
+            })
+            .filter(Boolean)
+            .map((event) => ({
+                pernr: event.pernr || currentEmployee.hrCode || currentEmployee.employeeId || '',
+                event: event.event,
+                validFrom: event.validFrom,
+                validTo: event.validTo,
+                doneFlag: 'X'
+            }));
+
+        if (!updates.length) {
+            alert(t('eventsSaveFailed'));
+            return;
+        }
+
+        const responses = await Promise.all(updates.map((payload) =>
+            fetch('/api/events/confirm', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }).then(async (response) => {
+                const body = await response.json().catch(() => ({}));
+                if (!response.ok || body.ok === false) {
+                    throw new Error(body.error || `Save failed with status ${response.status}`);
+                }
+                return body;
+            })
+        ));
+
+        if (!responses.length) {
+            throw new Error('No confirmation response');
+        }
+
+        alert(t('eventsSaveSuccess'));
+        await fetchAndDisplayEvents();
+    } catch (error) {
+        console.error('Error saving confirmations:', error);
+        alert(t('eventsSaveFailed'));
+    }
+}
 
 applyTranslations();
